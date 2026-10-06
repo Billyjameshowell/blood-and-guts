@@ -120,9 +120,48 @@
   .media .ph svg { width: 36px; height: 36px; opacity: 0.8; }
   .ex-meta h2 { margin: 0 0 2px; font-size: 1rem; line-height: 1.2; }
   .start-hint {
-    margin: 0 0 6px; font-size: 0.72rem; color: var(--muted); font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    margin: 4px 0 8px; padding: 6px 10px; border-radius: 999px;
+    font-size: 0.78rem; font-weight: 700; line-height: 1.2;
+    color: #1a1008; background: linear-gradient(135deg, #ff8a3d, #ffb347);
+    border: 1px solid rgba(255,138,61,0.55);
+    box-shadow: 0 2px 8px rgba(255,77,77,0.18);
   }
-  .start-hint strong { color: var(--accent2); font-weight: 700; }
+  .start-hint strong { color: #111; font-weight: 800; }
+  .start-hint .hint-sub { opacity: 0.75; font-weight: 650; font-size: 0.7rem; }
+  .weight-sug {
+    color: var(--accent2); font-weight: 800; text-transform: none; letter-spacing: 0;
+    margin-left: 4px;
+  }
+  .plate-hint {
+    margin-top: 6px; font-size: 0.74rem; color: var(--muted); font-weight: 600;
+  }
+  .plate-hint strong { color: var(--text); font-weight: 800; }
+  .tip-banner {
+    margin: 10px 12px 0; padding: 10px 12px; border-radius: 12px;
+    background: #1a1520; border: 1px solid rgba(255,138,61,0.45);
+    color: var(--text); font-size: 0.85rem; font-weight: 650; line-height: 1.35;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .tip-banner[hidden] { display: none !important; }
+  .tip-banner .tip-x {
+    flex: 0 0 auto; min-width: 36px; min-height: 36px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    font-weight: 800; font-size: 1rem;
+  }
+  .wake-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 0 12px;
+    min-height: 40px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted); font-size: 0.78rem; font-weight: 700;
+  }
+  .wake-pill.on { color: #0b0f14; background: var(--ok); border-color: transparent; }
+  body.rest-flash {
+    animation: restFlash 0.9s ease 2;
+  }
+  @keyframes restFlash {
+    0%, 100% { background-color: var(--bg); }
+    50% { background-color: #2a1810; }
+  }
   .badge-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .badge {
     font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: var(--surface2); color: var(--muted);
@@ -258,9 +297,15 @@
     <div class="actions">
       <button class="btn danger" id="resetDay" type="button">Reset day</button>
       <button class="btn primary" id="startRest" type="button">Rest 60s</button>
+      <button type="button" class="wake-pill" id="wakePill" title="Keep screen awake">Screen sleep OK</button>
     </div>
   </div>
 </header>
+
+<div class="tip-banner" id="tipBanner" hidden>
+  <div style="flex:1">Suggested start weights are under each lift and prefilled in empty Weight fields — edit anytime.</div>
+  <button type="button" class="tip-x" id="tipDismiss" aria-label="Dismiss tip">×</button>
+</div>
 
 <main id="app"></main>
 
@@ -563,10 +608,54 @@ function stickyDefaults(ex, setIdx) {
   return { weight, reps };
 }
 
+function parseStartWeight(hint) {
+  if (!hint) return null;
+  const m = String(hint).match(/~\s*(\d+(?:\.\d+)?)/);
+  return m ? m[1] : null;
+}
+
+function isBarbellEx(ex) {
+  if (!ex) return false;
+  if (ex.startHint && /\(bar\)/i.test(ex.startHint)) return true;
+  return /\bBB\b|Barbell|Deadlift|Skull/i.test(ex.name || '');
+}
+
+/** Plates per side for a standard 45 lb bar. */
+function platesPerSide(totalLb) {
+  const total = Number(totalLb);
+  if (!Number.isFinite(total) || total < 45) return null;
+  let rem = Math.round(((total - 45) / 2) * 2) / 2; // per side, 0.5 lb
+  if (rem < 0) return null;
+  const sizes = [45, 35, 25, 10, 5, 2.5];
+  const out = [];
+  for (const p of sizes) {
+    while (rem + 1e-9 >= p) {
+      out.push(p);
+      rem = Math.round((rem - p) * 2) / 2;
+    }
+  }
+  if (rem > 0.01) return { plates: out, leftover: rem };
+  return { plates: out, leftover: 0 };
+}
+
+function formatPlates(info) {
+  if (!info) return '';
+  if (!info.plates.length) return 'Bar only (45)';
+  const counts = {};
+  info.plates.forEach(p => { counts[p] = (counts[p] || 0) + 1; });
+  const parts = Object.keys(counts)
+    .map(Number)
+    .sort((a, b) => b - a)
+    .map(p => (counts[p] > 1 ? `${counts[p]}×${p}` : String(p)));
+  let s = `Per side: ${parts.join(' + ')}`;
+  if (info.leftover > 0.01) s += ` (+${info.leftover})`;
+  return s;
+}
+
 function displayValues(ex, setIdx) {
   const log = getLog(ex.id, setIdx);
   if (log.done || log.weight !== '' || log.reps !== '') {
-    return { weight: log.weight ?? '', reps: log.reps ?? '', hinted: false, hint: null };
+    return { weight: log.weight ?? '', reps: log.reps ?? '', hinted: false, hint: null, startPrefill: false };
   }
   const sticky = stickyDefaults(ex, setIdx);
   if (sticky.weight !== '' || sticky.reps !== '') {
@@ -574,10 +663,15 @@ function displayValues(ex, setIdx) {
       weight: sticky.weight,
       reps: sticky.reps,
       hinted: true,
-      hint: sticky
+      hint: sticky,
+      startPrefill: false
     };
   }
-  return { weight: '', reps: '', hinted: false, hint: null };
+  const startW = parseStartWeight(ex.startHint);
+  if (startW) {
+    return { weight: startW, reps: '', hinted: true, hint: null, startPrefill: true };
+  }
+  return { weight: '', reps: '', hinted: false, hint: null, startPrefill: false };
 }
 
 function updateResumeKey() {
@@ -674,7 +768,7 @@ function renderExercise(ex, focus) {
       <div class="media">${media}</div>
       <div class="ex-meta">
         <h2>${ex.name}</h2>
-        ${ex.startHint ? `<div class="start-hint"><strong>${ex.startHint}</strong> · working-set guide (adjust)</div>` : ''}
+        ${ex.startHint ? `<div class="start-hint"><strong>${ex.startHint}</strong><span class="hint-sub">· adjust anytime</span></div>` : ''}
         <div class="badge-row">
           ${done ? '<span class="badge ok">✓ Complete</span>' : `<span class="badge">${ex.sets.length} sets</span>`}
           ${ex.weak ? '<span class="badge">closest GIF</span>' : ''}
@@ -700,8 +794,22 @@ function renderSet(ex, s, i, focus) {
   const note = (!timed && s.note) ? ` · ${s.note}` : '';
   const isFocus = focus && focus.exId === ex.id && focus.setIdx === i;
   const durationVal = (log.reps !== '' && log.reps != null) ? log.reps : (s.reps || '');
-  const hint = (!timed && !log.done && vals.hinted)
-    ? `<div class="last-hint">Prefill from last set: <strong>${vals.hint.weight || '—'}</strong> × <strong>${vals.hint.reps || '—'}</strong></div>`
+  const startNum = parseStartWeight(ex.startHint);
+  let hint = '';
+  if (!timed && !log.done && vals.hinted) {
+    if (vals.startPrefill) {
+      hint = `<div class="last-hint">Suggested start: <strong>${vals.weight}</strong> lb — tweak if needed</div>`;
+    } else if (vals.hint) {
+      hint = `<div class="last-hint">Prefill from last set: <strong>${vals.hint.weight || '—'}</strong> × <strong>${vals.hint.reps || '—'}</strong></div>`;
+    }
+  }
+  const weightLabel = (!timed && !log.done && startNum)
+    ? `Weight <span class="weight-sug">~${startNum}</span>`
+    : 'Weight';
+  const showPlates = !timed && isBarbellEx(ex);
+  const plateText = showPlates && vals.weight !== '' ? formatPlates(platesPerSide(vals.weight)) : '';
+  const plateHtml = showPlates
+    ? `<div class="plate-hint" data-plate-hint>${plateText ? `<strong>${plateText}</strong>` : 'Enter bar weight for plates/side'}</div>`
     : '';
   const body = timed
     ? `<div class="timed-note">Timed block — no reps. Target <strong>${s.reps}</strong>${s.note ? ` · ${s.note}` : ''}.</div>
@@ -713,8 +821,8 @@ function renderSet(ex, s, i, focus) {
     </div>`
     : `<div class="inputs">
       <div class="field">
-        <label>Weight</label>
-        <input type="number" inputmode="decimal" step="any" placeholder="lb/kg" data-field="weight" value="${vals.weight ?? ''}" autocomplete="off" />
+        <label>${weightLabel}</label>
+        <input type="number" inputmode="decimal" step="any" placeholder="${startNum ? '~' + startNum + ' lb' : 'lb/kg'}" data-field="weight" value="${vals.weight ?? ''}" autocomplete="off" />
       </div>
       <div class="field">
         <label>Reps done</label>
@@ -724,11 +832,13 @@ function renderSet(ex, s, i, focus) {
           <button type="button" class="step" data-step="1" aria-label="Increase reps">+</button>
         </div>
       </div>
-    </div>`;
+    </div>${plateHtml}`;
+  const next = findNextIncomplete(currentDay());
+  const hasNextAfter = next && !(next.exId === ex.id && next.setIdx === i);
   const doneLabel = timed
     ? (log.done ? 'Undo' : 'Mark done')
-    : (log.done ? 'Undo' : 'Done + Rest');
-  return `<div class="set ${log.done ? 'done' : ''} ${isFocus ? 'focus' : ''} ${timed ? 'timed-set' : ''}" data-set="${i}" data-focus-key="${setKey(ex.id, i)}" data-mode="${timed ? 'timed' : 'lift'}">
+    : (log.done ? 'Undo' : (hasNextAfter || isFocus ? 'Done → next + Rest' : 'Done + Rest'));
+  return `<div class="set ${log.done ? 'done' : ''} ${isFocus ? 'focus' : ''} ${timed ? 'timed-set' : ''}" data-set="${i}" data-focus-key="${setKey(ex.id, i)}" data-mode="${timed ? 'timed' : 'lift'}" data-barbell="${showPlates ? '1' : '0'}">
     <div class="set-head">
       <div class="set-label"><span class="${kindClass}">${kindLabel}</span>${timed ? '' : ` · Set ${i + 1}`}</div>
       <div class="target">${timed ? `Duration: ${s.reps}` : `Target: ${s.reps}`}${note}${log.done ? ' <span class="check">✓</span>' : ''}</div>
@@ -755,6 +865,13 @@ function bindCards() {
         input.addEventListener('input', () => {
           // live-save weight/reps so sticky defaults & resume stay accurate
           setLog(exId, idx, { [input.dataset.field]: input.value });
+          if (input.dataset.field === 'weight' && setEl.dataset.barbell === '1') {
+            const el = setEl.querySelector('[data-plate-hint]');
+            if (el) {
+              const t = formatPlates(platesPerSide(input.value));
+              el.innerHTML = t ? `<strong>${t}</strong>` : 'Enter bar weight for plates/side';
+            }
+          }
         });
       });
       setEl.querySelectorAll('.step').forEach(btn => {
@@ -820,12 +937,14 @@ function startRest(seconds) {
       restTimer = null;
       $('timerTitle').textContent = 'Rest over';
       toast('Rest over — go!');
-      haptic([80, 40, 80, 40, 120]);
-      beep(3);
+      haptic([100, 50, 100, 50, 100, 50, 200]);
+      beep(4);
+      document.body.classList.add('rest-flash');
+      setTimeout(() => document.body.classList.remove('rest-flash'), 2000);
       // keep banner briefly so user sees it, then hide
       setTimeout(() => {
         if (!restTimer && restLeft <= 0) stopRest(false);
-      }, 1800);
+      }, 2200);
     }
   }, 1000);
 }
@@ -887,6 +1006,63 @@ window.addEventListener('scroll', scheduleScrollSave, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') persistScroll();
 });
+
+const TIP_KEY = 'bag_tip_startweights_v1';
+const tipBanner = $('tipBanner');
+const tipDismiss = $('tipDismiss');
+try {
+  if (!localStorage.getItem(TIP_KEY)) tipBanner.hidden = false;
+} catch (_) {}
+tipDismiss.addEventListener('click', () => {
+  tipBanner.hidden = true;
+  try { localStorage.setItem(TIP_KEY, '1'); } catch (_) {}
+});
+
+let wakeLock = null;
+const wakePill = $('wakePill');
+function paintWakePill() {
+  const on = !!wakeLock;
+  wakePill.classList.toggle('on', on);
+  wakePill.textContent = on ? 'Screen stays on' : 'Keep screen on';
+}
+async function requestWakeLock(opts = {}) {
+  const noisy = !!opts.noisy;
+  try {
+    if (!('wakeLock' in navigator)) {
+      if (noisy) toast('Wake Lock not supported on this phone');
+      return;
+    }
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+      paintWakePill();
+    });
+    paintWakePill();
+  } catch (e) {
+    if (noisy) toast('Could not keep screen on — tap again');
+    paintWakePill();
+  }
+}
+async function releaseWakeLock() {
+  try { if (wakeLock) await wakeLock.release(); } catch (_) {}
+  wakeLock = null;
+  paintWakePill();
+}
+wakePill.addEventListener('click', async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (wakeLock) await releaseWakeLock();
+  else await requestWakeLock({ noisy: true });
+  haptic(12);
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && wakePill.classList.contains('on') && !wakeLock) {
+    requestWakeLock();
+  }
+});
+// Auto-enable keep-awake for gym use; user can tap to turn off
+requestWakeLock();
+paintWakePill();
 
 applyHeaderCollapsed(!!state.headerCollapsed, { persist: false });
 updateSlimHeader();
