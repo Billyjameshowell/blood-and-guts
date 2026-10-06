@@ -28,10 +28,43 @@
   body { min-height: 100dvh; padding-bottom: calc(88px + var(--safe-b)); }
   header.app {
     position: sticky; top: 0; z-index: 40;
-    background: linear-gradient(180deg, #0b0f14 70%, rgba(11,15,20,0.85));
-    padding: 12px 14px 8px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #0b0f14 85%, rgba(11,15,20,0.92));
+    padding: 0; border-bottom: 1px solid var(--border);
     backdrop-filter: blur(8px);
   }
+  .header-toggle {
+    width: 100%; border: 0; background: transparent; color: inherit;
+    text-align: left; padding: 10px 14px; min-height: 48px;
+    display: flex; align-items: center; cursor: pointer;
+    -webkit-user-select: none; user-select: none;
+  }
+  .header-slim {
+    width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .slim-left { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+  .slim-title {
+    font-weight: 800; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .slim-pct {
+    font-variant-numeric: tabular-nums; font-weight: 800; color: var(--ok); font-size: 0.9rem; flex-shrink: 0;
+  }
+  .slim-bar {
+    display: none; flex: 1; max-width: 72px; height: 6px; background: var(--surface2);
+    border-radius: 999px; overflow: hidden; border: 1px solid var(--border);
+  }
+  .slim-bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--ok), #6ee7b7); }
+  .chevron {
+    flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface2); display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; color: var(--muted); transition: transform .2s ease;
+  }
+  header.app:not(.collapsed) .chevron { transform: rotate(180deg); }
+  .header-body { padding: 0 14px 10px; }
+  header.app.collapsed .header-body { display: none; }
+  header.app.collapsed .header-toggle { padding: 8px 14px; }
+  header.app.collapsed .slim-bar { display: block; }
+  header.app.collapsed .brand-full { display: none; }
+  .brand-full { display: block; }
   .brand { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .brand h1 { font-size: 1.15rem; margin: 0; letter-spacing: 0.02em; }
   .brand h1 span { color: var(--accent); }
@@ -184,24 +217,36 @@
 </style>
 </head>
 <body>
-<header class="app">
-  <div class="brand">
-    <div>
-      <h1>Blood &amp; <span>Guts</span></h1>
-      <div class="sub">Dorian Yates · 6-week · Billy’s gym tracker</div>
+<header class="app" id="appHeader">
+  <button type="button" class="header-toggle" id="headerToggle" aria-expanded="true" aria-controls="headerBody" aria-label="Collapse or expand header">
+    <div class="header-slim">
+      <div class="slim-left">
+        <span class="slim-title" id="slimTitle">Day 1 · Chest</span>
+        <div class="slim-bar"><i id="slimBar"></i></div>
+        <span class="slim-pct" id="slimPct">0%</span>
+      </div>
+      <span class="chevron" aria-hidden="true">▾</span>
     </div>
-  </div>
-  <div class="notes">
-    <strong>Program rules:</strong> max <strong>1 min</strong> rest between sets (incl. between exercises). Warm-ups as listed; working sets heavy (6–8 or 8–10), push near failure (forced reps with partner optional).
-  </div>
-  <div class="day-picker" id="dayPicker"></div>
-  <div class="progress-row">
-    <div class="bar"><i id="progBar"></i></div>
-    <div class="pct" id="progPct">0%</div>
-  </div>
-  <div class="actions">
-    <button class="btn danger" id="resetDay" type="button">Reset day</button>
-    <button class="btn primary" id="startRest" type="button">Rest 60s</button>
+  </button>
+  <div class="header-body" id="headerBody">
+    <div class="brand brand-full">
+      <div>
+        <h1>Blood &amp; <span>Guts</span></h1>
+        <div class="sub">Dorian Yates · 6-week · Billy’s gym tracker</div>
+      </div>
+    </div>
+    <div class="notes">
+      <strong>Program rules:</strong> max <strong>1 min</strong> rest between sets (incl. between exercises). Warm-ups as listed; working sets heavy (6–8 or 8–10), push near failure (forced reps with partner optional).
+    </div>
+    <div class="day-picker" id="dayPicker"></div>
+    <div class="progress-row">
+      <div class="bar"><i id="progBar"></i></div>
+      <div class="pct" id="progPct">0%</div>
+    </div>
+    <div class="actions">
+      <button class="btn danger" id="resetDay" type="button">Reset day</button>
+      <button class="btn primary" id="startRest" type="button">Rest 60s</button>
+    </div>
   </div>
 </header>
 
@@ -348,7 +393,7 @@ const DAYS = [
 ];
 
 function defaultState() {
-  return { day: 1, logs: {}, scrollY: 0, resumeKey: null };
+  return { day: 1, logs: {}, scrollY: 0, resumeKey: null, headerCollapsed: false };
 }
 
 function load() {
@@ -360,7 +405,8 @@ function load() {
       day: parsed.day || 1,
       logs: parsed.logs || {},
       scrollY: typeof parsed.scrollY === 'number' ? parsed.scrollY : 0,
-      resumeKey: parsed.resumeKey || null
+      resumeKey: parsed.resumeKey || null,
+      headerCollapsed: !!parsed.headerCollapsed
     };
   } catch { return defaultState(); }
 }
@@ -382,6 +428,48 @@ const raf = (cb) => (window.requestAnimationFrame || ((fn) => setTimeout(fn, 0))
 const $ = id => document.getElementById(id);
 const app = $('app');
 const dayPicker = $('dayPicker');
+const appHeader = $('appHeader');
+const headerToggle = $('headerToggle');
+let lastScrollY = window.scrollY || 0;
+let headerAutoLockUntil = 0;
+let scrollDirAccum = 0;
+
+function applyHeaderCollapsed(collapsed, { persist = true, fromUser = false } = {}) {
+  state.headerCollapsed = !!collapsed;
+  appHeader.classList.toggle('collapsed', state.headerCollapsed);
+  headerToggle.setAttribute('aria-expanded', state.headerCollapsed ? 'false' : 'true');
+  headerToggle.setAttribute('aria-label', state.headerCollapsed ? 'Expand header' : 'Collapse header');
+  if (fromUser) headerAutoLockUntil = Date.now() + 900;
+  if (persist) save();
+}
+
+function updateSlimHeader() {
+  const day = currentDay();
+  const s = dayStats(day);
+  $('slimTitle').textContent = `Day ${day.id} · ${day.short}`;
+  $('slimPct').textContent = s.pct + '%';
+  $('slimBar').style.width = s.pct + '%';
+}
+
+function onHeaderScrollAuto() {
+  if (Date.now() < headerAutoLockUntil) {
+    lastScrollY = window.scrollY || 0;
+    return;
+  }
+  const y = window.scrollY || 0;
+  const delta = y - lastScrollY;
+  lastScrollY = y;
+  // ignore tiny jitter
+  if (Math.abs(delta) < 4) return;
+  scrollDirAccum = (delta > 0) === (scrollDirAccum > 0) ? scrollDirAccum + delta : delta;
+  if (scrollDirAccum > 28 && !state.headerCollapsed && y > 40) {
+    scrollDirAccum = 0;
+    applyHeaderCollapsed(true, { persist: true });
+  } else if (scrollDirAccum < -28 && state.headerCollapsed) {
+    scrollDirAccum = 0;
+    applyHeaderCollapsed(false, { persist: true });
+  }
+}
 
 function toast(msg) {
   const t = $('toast');
@@ -552,6 +640,7 @@ function renderProgress() {
   const s = dayStats(currentDay());
   $('progBar').style.width = s.pct + '%';
   $('progPct').textContent = s.pct + '%';
+  updateSlimHeader();
 }
 
 function render(opts = {}) {
@@ -775,11 +864,25 @@ $('resetDay').addEventListener('click', () => {
   toast('Day reset');
 });
 
-window.addEventListener('scroll', scheduleScrollSave, { passive: true });
+headerToggle.addEventListener('click', (e) => {
+  // Don't steal clicks from nested controls (none in toggle, but safe)
+  e.preventDefault();
+  applyHeaderCollapsed(!state.headerCollapsed, { persist: true, fromUser: true });
+  haptic(12);
+});
+
+// Prevent day/action buttons from bubbling weirdly — they live outside toggle.
+
+window.addEventListener('scroll', () => {
+  scheduleScrollSave();
+  onHeaderScrollAuto();
+}, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') persistScroll();
 });
 
+applyHeaderCollapsed(!!state.headerCollapsed, { persist: false });
+updateSlimHeader();
 render({ resume: true });
 </script>
 </body>
