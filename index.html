@@ -61,6 +61,8 @@
   header.app:not(.collapsed) .chevron { transform: rotate(180deg); }
   .header-body { padding: 0 14px 10px; }
   header.app.collapsed .header-body { display: none; }
+  /* Instant collapse — no height animation (stable during input focus / keyboard) */
+  header.app, .header-body, .header-toggle { transition: none; }
   header.app.collapsed .header-toggle { padding: 8px 14px; }
   header.app.collapsed .slim-bar { display: block; }
   header.app.collapsed .brand-full { display: none; }
@@ -436,16 +438,12 @@ const app = $('app');
 const dayPicker = $('dayPicker');
 const appHeader = $('appHeader');
 const headerToggle = $('headerToggle');
-let lastScrollY = window.scrollY || 0;
-let headerAutoLockUntil = 0;
-let scrollDirAccum = 0;
 
-function applyHeaderCollapsed(collapsed, { persist = true, fromUser = false } = {}) {
+function applyHeaderCollapsed(collapsed, { persist = true } = {}) {
   state.headerCollapsed = !!collapsed;
   appHeader.classList.toggle('collapsed', state.headerCollapsed);
   headerToggle.setAttribute('aria-expanded', state.headerCollapsed ? 'false' : 'true');
   headerToggle.setAttribute('aria-label', state.headerCollapsed ? 'Expand header' : 'Collapse header');
-  if (fromUser) headerAutoLockUntil = Date.now() + 900;
   if (persist) save();
 }
 
@@ -455,26 +453,6 @@ function updateSlimHeader() {
   $('slimTitle').textContent = `Day ${day.id} · ${day.short}`;
   $('slimPct').textContent = s.pct + '%';
   $('slimBar').style.width = s.pct + '%';
-}
-
-function onHeaderScrollAuto() {
-  if (Date.now() < headerAutoLockUntil) {
-    lastScrollY = window.scrollY || 0;
-    return;
-  }
-  const y = window.scrollY || 0;
-  const delta = y - lastScrollY;
-  lastScrollY = y;
-  // ignore tiny jitter
-  if (Math.abs(delta) < 4) return;
-  scrollDirAccum = (delta > 0) === (scrollDirAccum > 0) ? scrollDirAccum + delta : delta;
-  if (scrollDirAccum > 28 && !state.headerCollapsed && y > 40) {
-    scrollDirAccum = 0;
-    applyHeaderCollapsed(true, { persist: true });
-  } else if (scrollDirAccum < -28 && state.headerCollapsed) {
-    scrollDirAccum = 0;
-    applyHeaderCollapsed(false, { persist: true });
-  }
 }
 
 function toast(msg) {
@@ -894,18 +872,13 @@ $('resetDay').addEventListener('click', () => {
 });
 
 headerToggle.addEventListener('click', (e) => {
-  // Don't steal clicks from nested controls (none in toggle, but safe)
   e.preventDefault();
-  applyHeaderCollapsed(!state.headerCollapsed, { persist: true, fromUser: true });
+  applyHeaderCollapsed(!state.headerCollapsed, { persist: true });
   haptic(12);
 });
 
-// Prevent day/action buttons from bubbling weirdly — they live outside toggle.
-
-window.addEventListener('scroll', () => {
-  scheduleScrollSave();
-  onHeaderScrollAuto();
-}, { passive: true });
+// Tap-only collapse: no scroll auto-toggle (avoids keyboard/focus jitter on mobile).
+window.addEventListener('scroll', scheduleScrollSave, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') persistScroll();
 });
