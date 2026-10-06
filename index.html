@@ -134,6 +134,12 @@
   .set-label .kind-work { color: var(--work); }
   .target { color: var(--muted); font-size: 0.78rem; }
   .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .inputs.timed { grid-template-columns: 1fr; }
+  .timed-note {
+    margin: 0 0 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+    background: #0d1218; color: var(--muted); font-size: 0.85rem; line-height: 1.35;
+  }
+  .timed-note strong { color: var(--text); }
   .field label { display: block; font-size: 0.68rem; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
   .field input {
     width: 100%; min-height: 48px; border-radius: 10px; border: 1px solid var(--border);
@@ -284,7 +290,7 @@ const DAYS = [
     title: 'Chest & Biceps',
     short: 'Chest',
     exercises: [
-      { id: 'd1-tread', name: '10 min treadmill warm-up', placeholder: 'cardio', sets: [{ kind: 'wu', reps: '10 min', note: 'Steady pace' }] },
+      { id: 'd1-tread', name: '10 min treadmill warm-up', placeholder: 'cardio', sets: [{ kind: 'wu', reps: '10 min', note: 'Steady pace', mode: 'timed' }] },
       { id: 'd1-rotator', name: 'Rotator Cuff Warm-Up', exerciseId: 'x306lCW', matchName: 'dumbbell upright shoulder external rotation', weak: true, sets: [
         { kind: 'wu', reps: '12' }, { kind: 'wu', reps: '12' }
       ]},
@@ -358,7 +364,7 @@ const DAYS = [
     short: 'Legs',
     exercises: [
       { id: 'd4-cardio', name: '10 min cardio + stretches', placeholder: 'stretch', sets: [
-        { kind: 'wu', reps: '10 min', note: 'Cardio' },
+        { kind: 'wu', reps: '10 min', note: 'Cardio', mode: 'timed' },
         { kind: 'wu', reps: '1×6', note: 'Low back bent' },
         { kind: 'wu', reps: '1×6', note: 'Low back straight' },
         { kind: 'wu', reps: '1×6', note: 'Hamstring' },
@@ -698,22 +704,31 @@ function renderExercise(ex, focus) {
   </article>`;
 }
 
+function isTimedSet(s) {
+  return s && (s.mode === 'timed' || s.mode === 'cardio');
+}
+
 function renderSet(ex, s, i, focus) {
   const log = getLog(ex.id, i);
   const vals = displayValues(ex, i);
+  const timed = isTimedSet(s);
   const kindClass = s.kind === 'wu' ? 'kind-wu' : 'kind-work';
-  const kindLabel = s.kind === 'wu' ? 'Warm-up' : 'Working';
-  const note = s.note ? ` · ${s.note}` : '';
+  const kindLabel = timed ? 'Cardio' : (s.kind === 'wu' ? 'Warm-up' : 'Working');
+  const note = (!timed && s.note) ? ` · ${s.note}` : '';
   const isFocus = focus && focus.exId === ex.id && focus.setIdx === i;
-  const hint = (!log.done && vals.hinted)
+  const durationVal = (log.reps !== '' && log.reps != null) ? log.reps : (s.reps || '');
+  const hint = (!timed && !log.done && vals.hinted)
     ? `<div class="last-hint">Prefill from last set: <strong>${vals.hint.weight || '—'}</strong> × <strong>${vals.hint.reps || '—'}</strong></div>`
     : '';
-  return `<div class="set ${log.done ? 'done' : ''} ${isFocus ? 'focus' : ''}" data-set="${i}" data-focus-key="${setKey(ex.id, i)}">
-    <div class="set-head">
-      <div class="set-label"><span class="${kindClass}">${kindLabel}</span> · Set ${i + 1}</div>
-      <div class="target">Target: ${s.reps}${note}${log.done ? ' <span class="check">✓</span>' : ''}</div>
-    </div>
-    <div class="inputs">
+  const body = timed
+    ? `<div class="timed-note">Timed block — no reps. Target <strong>${s.reps}</strong>${s.note ? ` · ${s.note}` : ''}.</div>
+    <div class="inputs timed">
+      <div class="field">
+        <label>Duration</label>
+        <input type="text" inputmode="text" placeholder="${s.reps}" data-field="reps" value="${durationVal}" autocomplete="off" />
+      </div>
+    </div>`
+    : `<div class="inputs">
       <div class="field">
         <label>Weight</label>
         <input type="number" inputmode="decimal" step="any" placeholder="lb/kg" data-field="weight" value="${vals.weight ?? ''}" autocomplete="off" />
@@ -726,10 +741,19 @@ function renderSet(ex, s, i, focus) {
           <button type="button" class="step" data-step="1" aria-label="Increase reps">+</button>
         </div>
       </div>
+    </div>`;
+  const doneLabel = timed
+    ? (log.done ? 'Undo' : 'Mark done')
+    : (log.done ? 'Undo' : 'Done + Rest');
+  return `<div class="set ${log.done ? 'done' : ''} ${isFocus ? 'focus' : ''} ${timed ? 'timed-set' : ''}" data-set="${i}" data-focus-key="${setKey(ex.id, i)}" data-mode="${timed ? 'timed' : 'lift'}">
+    <div class="set-head">
+      <div class="set-label"><span class="${kindClass}">${kindLabel}</span>${timed ? '' : ` · Set ${i + 1}`}</div>
+      <div class="target">${timed ? `Duration: ${s.reps}` : `Target: ${s.reps}`}${note}${log.done ? ' <span class="check">✓</span>' : ''}</div>
     </div>
+    ${body}
     ${hint}
     <div class="set-actions">
-      <button type="button" class="btn done-btn ${log.done ? '' : 'primary'} mark-done">${log.done ? 'Undo' : 'Done + Rest'}</button>
+      <button type="button" class="btn done-btn ${log.done ? '' : 'primary'} mark-done">${doneLabel}</button>
     </div>
   </div>`;
 }
@@ -753,6 +777,7 @@ function bindCards() {
       setEl.querySelectorAll('.step').forEach(btn => {
         btn.addEventListener('click', () => {
           const input = setEl.querySelector('input[data-field="reps"]');
+          if (!input || input.type === 'text') return;
           const delta = Number(btn.dataset.step);
           const cur = parseInt(input.value || '0', 10) || 0;
           const next = Math.max(0, cur + delta);
@@ -764,11 +789,15 @@ function bindCards() {
       setEl.querySelector('.mark-done').addEventListener('click', () => {
         const log = getLog(exId, idx);
         const nextDone = !log.done;
-        const weight = setEl.querySelector('input[data-field="weight"]').value;
-        const reps = setEl.querySelector('input[data-field="reps"]').value;
+        const weightEl = setEl.querySelector('input[data-field="weight"]');
+        const repsEl = setEl.querySelector('input[data-field="reps"]');
+        const weight = weightEl ? weightEl.value : (log.weight || '');
+        const reps = repsEl ? repsEl.value : (log.reps || '');
+        const timed = setEl.dataset.mode === 'timed';
         setLog(exId, idx, { done: nextDone, weight, reps });
         if (nextDone) {
           haptic([40, 30, 40]);
+          // Timed cardio still gets rest so the program cadence stays consistent
           startRest(60);
           updateResumeKey();
           render({ scrollToFocus: true });
