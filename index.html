@@ -137,6 +137,14 @@
     margin-top: 6px; font-size: 0.74rem; color: var(--muted); font-weight: 600;
   }
   .plate-hint strong { color: var(--text); font-weight: 800; }
+  .wu-suggest {
+    margin: 0 0 8px; padding: 10px 12px; border-radius: 10px;
+    background: linear-gradient(135deg, rgba(255,77,77,0.18), rgba(255,138,61,0.22));
+    border: 1px solid rgba(255,138,61,0.55);
+    color: var(--text); font-size: 0.88rem; font-weight: 750; line-height: 1.35;
+  }
+  .wu-suggest strong { color: var(--accent2); font-weight: 900; font-size: 1.02rem; }
+  .wu-suggest .wu-meta { display: block; margin-top: 2px; font-size: 0.72rem; color: var(--muted); font-weight: 650; }
   .tip-banner {
     margin: 10px 12px 0; padding: 10px 12px; border-radius: 12px;
     background: #1a1520; border: 1px solid rgba(255,138,61,0.45);
@@ -303,7 +311,7 @@
 </header>
 
 <div class="tip-banner" id="tipBanner" hidden>
-  <div style="flex:1">Suggested start weights are under each lift and prefilled in empty Weight fields — edit anytime.</div>
+  <div style="flex:1">Log a warm-up (weight × reps) to get a working-set suggestion — or use the start-weight guide. Edit anytime.</div>
   <button type="button" class="tip-x" id="tipDismiss" aria-label="Dismiss tip">×</button>
 </div>
 
@@ -620,6 +628,123 @@ function isBarbellEx(ex) {
   return /\bBB\b|Barbell|Deadlift|Skull/i.test(ex.name || '');
 }
 
+function equipmentKind(ex) {
+  const h = ex.startHint || '';
+  const n = ex.name || '';
+  if (/per hand/i.test(h) || /\bDB\b|Dumbbell/i.test(n)) return 'db';
+  if (/\(bar\)/i.test(h) || isBarbellEx(ex)) return 'bar';
+  return 'stack'; // cables, machines, sled
+}
+
+function roundSuggestWeight(w, kind) {
+  if (!Number.isFinite(w) || w <= 0) return null;
+  if (kind === 'db' && w < 25) return Math.round(w / 2.5) * 2.5;
+  return Math.round(w / 5) * 5;
+}
+
+/** Low end of working rep range: "6-8"→6, "10-12"→10, "RP to fail"→8. */
+function workingRepTarget(repsStr) {
+  const m = String(repsStr || '').match(/(\d+)/);
+  return m ? Number(m[1]) : 8;
+}
+
+/**
+ * Warm-up → working-set suggestion
+ *
+ * Warm-ups are submaximal (~2–4 RIR). Use RIR=3: effectiveReps = loggedReps + 3
+ * so 1RM isn't floored from easy warm-ups.
+ *
+ * 1RM = average of:
+ *   Epley:   w * (1 + r/30)
+ *   Brzycki: w * 36 / (37 - r)   (r clamped to 1..36)
+ *
+ * Working target reps = low end of that set's range (e.g. 6-8 → 6).
+ * Predicted load at N reps via Epley invert: 1RM / (1 + N/30), then × 0.93
+ * (hard Blood & Guts top set, not a grind max). Round by equipment.
+ *
+ * Example: warm-up 135×12 → r_eff=15 → 1RM≈211.7 → @6 reps ≈176.4 → ×0.93 ≈164 → bar 165 lb.
+ * Heavier second warm-up 185×10 → r_eff=13 → 1RM≈271 → @6 ≈226 → ×0.93 ≈210 lb.
+ */
+const WU_RIR = 3;
+const WORK_PCT = 0.93;
+
+function estimate1RM(weight, reps) {
+  const w = Number(weight);
+  let r = Number(reps);
+  if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(r) || r <= 0) return null;
+  r = Math.min(36, Math.max(1, r));
+  const epley = w * (1 + r / 30);
+  const brzycki = w * 36 / (37 - r);
+  return (epley + brzycki) / 2;
+}
+
+function bestWarmupSet(ex) {
+  let best = null;
+  ex.sets.forEach((s, i) => {
+    if (s.kind !== 'wu' || isTimedSet(s)) return;
+    const log = getLog(ex.id, i);
+    const w = Number(log.weight);
+    const r = parseFloat(log.reps);
+    if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(r) || r <= 0) return;
+    // Heaviest warm-up; tie-break most recent index
+    if (!best || w > best.w || (w === best.w && i >= best.idx)) {
+      best = { w, r, idx: i, weightLabel: String(log.weight), repsLabel: String(log.reps) };
+    }
+  });
+  return best;
+}
+
+function suggestFromWarmup(ex, workSet) {
+  if (!ex || !workSet || workSet.kind !== 'work' || isTimedSet(workSet)) return null;
+  const wu = bestWarmupSet(ex);
+  if (!wu) return null;
+  const rEff = wu.r + WU_RIR;
+  const orm = estimate1RM(wu.w, rEff);
+  if (!orm) return null;
+  const targetReps = workingRepTarget(workSet.reps);
+  const atReps = orm / (1 + targetReps / 30);
+  const raw = atReps * WORK_PCT;
+  const kind = equipmentKind(ex);
+  const rounded = roundSuggestWeight(raw, kind);
+  if (rounded == null || rounded <= 0) return null;
+  // Never suggest below the warm-up load (would be nonsense for ascending warm-ups)
+  const floor = roundSuggestWeight(Math.max(rounded, wu.w), kind);
+  return {
+    weight: floor,
+    targetReps,
+    fromWeight: wu.weightLabel,
+    fromReps: wu.repsLabel,
+    orm: Math.round(orm),
+    raw: Math.round(raw)
+  };
+}
+
+/** Sticky only from prior working sets (don't copy warm-up loads onto work sets). */
+function stickyWorkDefaults(ex, setIdx) {
+  let weight = '', reps = '';
+  for (let i = setIdx - 1; i >= 0; i--) {
+    if (ex.sets[i].kind !== 'work' || isTimedSet(ex.sets[i])) continue;
+    const log = getLog(ex.id, i);
+    if (log.done && (log.weight !== '' || log.reps !== '')) {
+      weight = log.weight;
+      reps = log.reps;
+      break;
+    }
+  }
+  if (weight === '' && reps === '') {
+    for (let i = setIdx - 1; i >= 0; i--) {
+      if (ex.sets[i].kind !== 'work' || isTimedSet(ex.sets[i])) continue;
+      const log = getLog(ex.id, i);
+      if (log.weight !== '' || log.reps !== '') {
+        weight = log.weight;
+        reps = log.reps;
+        break;
+      }
+    }
+  }
+  return { weight, reps };
+}
+
 /** Plates per side for a standard 45 lb bar. */
 function platesPerSide(totalLb) {
   const total = Number(totalLb);
@@ -654,9 +779,45 @@ function formatPlates(info) {
 
 function displayValues(ex, setIdx) {
   const log = getLog(ex.id, setIdx);
+  const s = ex.sets[setIdx];
+  const timed = isTimedSet(s);
   if (log.done || log.weight !== '' || log.reps !== '') {
-    return { weight: log.weight ?? '', reps: log.reps ?? '', hinted: false, hint: null, startPrefill: false };
+    return { weight: log.weight ?? '', reps: log.reps ?? '', hinted: false, hint: null, startPrefill: false, fromWarmup: null };
   }
+
+  // Working sets: prior work sticky → warm-up estimate → startHint
+  if (!timed && s.kind === 'work') {
+    const workSticky = stickyWorkDefaults(ex, setIdx);
+    if (workSticky.weight !== '' || workSticky.reps !== '') {
+      return {
+        weight: workSticky.weight,
+        reps: workSticky.reps,
+        hinted: true,
+        hint: workSticky,
+        startPrefill: false,
+        fromWarmup: suggestFromWarmup(ex, s) // still show banner as guidance
+      };
+    }
+    const sug = suggestFromWarmup(ex, s);
+    if (sug) {
+      return {
+        weight: String(sug.weight),
+        reps: '',
+        hinted: true,
+        hint: null,
+        startPrefill: false,
+        fromWarmup: sug,
+        wuPrefill: true
+      };
+    }
+    const startW = parseStartWeight(ex.startHint);
+    if (startW) {
+      return { weight: startW, reps: '', hinted: true, hint: null, startPrefill: true, fromWarmup: null };
+    }
+    return { weight: '', reps: '', hinted: false, hint: null, startPrefill: false, fromWarmup: null };
+  }
+
+  // Warm-ups / other: sticky within exercise, else startHint
   const sticky = stickyDefaults(ex, setIdx);
   if (sticky.weight !== '' || sticky.reps !== '') {
     return {
@@ -664,14 +825,15 @@ function displayValues(ex, setIdx) {
       reps: sticky.reps,
       hinted: true,
       hint: sticky,
-      startPrefill: false
+      startPrefill: false,
+      fromWarmup: null
     };
   }
   const startW = parseStartWeight(ex.startHint);
   if (startW) {
-    return { weight: startW, reps: '', hinted: true, hint: null, startPrefill: true };
+    return { weight: startW, reps: '', hinted: true, hint: null, startPrefill: true, fromWarmup: null };
   }
-  return { weight: '', reps: '', hinted: false, hint: null, startPrefill: false };
+  return { weight: '', reps: '', hinted: false, hint: null, startPrefill: false, fromWarmup: null };
 }
 
 function updateResumeKey() {
@@ -795,22 +957,31 @@ function renderSet(ex, s, i, focus) {
   const isFocus = focus && focus.exId === ex.id && focus.setIdx === i;
   const durationVal = (log.reps !== '' && log.reps != null) ? log.reps : (s.reps || '');
   const startNum = parseStartWeight(ex.startHint);
+  const wuSug = (!timed && s.kind === 'work') ? (vals.fromWarmup || suggestFromWarmup(ex, s)) : null;
   let hint = '';
+  let wuBanner = '';
+  if (!timed && s.kind === 'work' && wuSug) {
+    wuBanner = `<div class="wu-suggest" data-wu-suggest>Suggested: <strong>${wuSug.weight} lb</strong> (from warm-up ${wuSug.fromWeight}×${wuSug.fromReps})<span class="wu-meta">Est. for ~${wuSug.targetReps} reps · edit anytime</span></div>`;
+  }
   if (!timed && !log.done && vals.hinted) {
-    if (vals.startPrefill) {
+    if (vals.wuPrefill) {
+      hint = ''; // banner covers it
+    } else if (vals.startPrefill) {
       hint = `<div class="last-hint">Suggested start: <strong>${vals.weight}</strong> lb — tweak if needed</div>`;
     } else if (vals.hint) {
       hint = `<div class="last-hint">Prefill from last set: <strong>${vals.hint.weight || '—'}</strong> × <strong>${vals.hint.reps || '—'}</strong></div>`;
     }
   }
-  const weightLabel = (!timed && !log.done && startNum)
-    ? `Weight <span class="weight-sug">~${startNum}</span>`
+  const labelNum = (wuSug && (vals.wuPrefill || !log.done)) ? wuSug.weight : startNum;
+  const weightLabel = (!timed && !log.done && labelNum)
+    ? `Weight <span class="weight-sug">~${labelNum}</span>`
     : 'Weight';
   const showPlates = !timed && isBarbellEx(ex);
   const plateText = showPlates && vals.weight !== '' ? formatPlates(platesPerSide(vals.weight)) : '';
   const plateHtml = showPlates
     ? `<div class="plate-hint" data-plate-hint>${plateText ? `<strong>${plateText}</strong>` : 'Enter bar weight for plates/side'}</div>`
     : '';
+  const phNum = (vals.wuPrefill && wuSug) ? wuSug.weight : startNum;
   const body = timed
     ? `<div class="timed-note">Timed block — no reps. Target <strong>${s.reps}</strong>${s.note ? ` · ${s.note}` : ''}.</div>
     <div class="inputs timed">
@@ -819,10 +990,10 @@ function renderSet(ex, s, i, focus) {
         <input type="text" inputmode="text" placeholder="${s.reps}" data-field="reps" value="${durationVal}" autocomplete="off" />
       </div>
     </div>`
-    : `<div class="inputs">
+    : `${wuBanner}<div class="inputs">
       <div class="field">
         <label>${weightLabel}</label>
-        <input type="number" inputmode="decimal" step="any" placeholder="${startNum ? '~' + startNum + ' lb' : 'lb/kg'}" data-field="weight" value="${vals.weight ?? ''}" autocomplete="off" />
+        <input type="number" inputmode="decimal" step="any" placeholder="${phNum ? '~' + phNum + ' lb' : 'lb/kg'}" data-field="weight" value="${vals.weight ?? ''}" autocomplete="off" />
       </div>
       <div class="field">
         <label>Reps done</label>
@@ -838,7 +1009,7 @@ function renderSet(ex, s, i, focus) {
   const doneLabel = timed
     ? (log.done ? 'Undo' : 'Mark done')
     : (log.done ? 'Undo' : (hasNextAfter || isFocus ? 'Done → next + Rest' : 'Done + Rest'));
-  return `<div class="set ${log.done ? 'done' : ''} ${isFocus ? 'focus' : ''} ${timed ? 'timed-set' : ''}" data-set="${i}" data-focus-key="${setKey(ex.id, i)}" data-mode="${timed ? 'timed' : 'lift'}" data-barbell="${showPlates ? '1' : '0'}">
+  return `<div class="set ${log.done ? 'done' : ''} ${isFocus ? 'focus' : ''} ${timed ? 'timed-set' : ''}" data-set="${i}" data-focus-key="${setKey(ex.id, i)}" data-mode="${timed ? 'timed' : 'lift'}" data-kind="${s.kind || 'work'}" data-barbell="${showPlates ? '1' : '0'}">
     <div class="set-head">
       <div class="set-label"><span class="${kindClass}">${kindLabel}</span>${timed ? '' : ` · Set ${i + 1}`}</div>
       <div class="target">${timed ? `Duration: ${s.reps}` : `Target: ${s.reps}`}${note}${log.done ? ' <span class="check">✓</span>' : ''}</div>
@@ -849,6 +1020,29 @@ function renderSet(ex, s, i, focus) {
       <button type="button" class="btn done-btn ${log.done ? '' : 'primary'} mark-done">${doneLabel}</button>
     </div>
   </div>`;
+}
+
+let wuRefreshTimer = null;
+function scheduleWarmupRefresh() {
+  clearTimeout(wuRefreshTimer);
+  wuRefreshTimer = setTimeout(() => {
+    const ae = document.activeElement;
+    const focusInfo = (ae && ae.dataset && ae.dataset.field) ? {
+      setKey: ae.closest('.set')?.dataset?.focusKey,
+      field: ae.dataset.field,
+      selStart: ae.selectionStart,
+      selEnd: ae.selectionEnd
+    } : null;
+    render();
+    if (focusInfo && focusInfo.setKey) {
+      const setEl = document.querySelector(`.set[data-focus-key="${focusInfo.setKey}"]`);
+      const inp = setEl?.querySelector(`input[data-field="${focusInfo.field}"]`);
+      if (inp) {
+        inp.focus();
+        try { inp.setSelectionRange(focusInfo.selStart, focusInfo.selEnd); } catch (_) {}
+      }
+    }
+  }, 280);
 }
 
 function bindCards() {
@@ -872,6 +1066,7 @@ function bindCards() {
               el.innerHTML = t ? `<strong>${t}</strong>` : 'Enter bar weight for plates/side';
             }
           }
+          if (setEl.dataset.kind === 'wu') scheduleWarmupRefresh();
         });
       });
       setEl.querySelectorAll('.step').forEach(btn => {
@@ -884,6 +1079,7 @@ function bindCards() {
           input.value = String(next);
           setLog(exId, idx, { reps: String(next) });
           haptic(12);
+          if (setEl.dataset.kind === 'wu') scheduleWarmupRefresh();
         });
       });
       setEl.querySelector('.mark-done').addEventListener('click', () => {
