@@ -39,6 +39,30 @@ for (const [name, browser, device, opts] of [['webkit-iphone13', webkit, devices
   const ok2 = empty === '' && reps === '10';
   failed += !ok2;
   console.log(`${ok2 ? 'PASS' : 'FAIL'} ${name}: cleared weight stays '${empty}', first reps + gives ${reps} (target 10-12)`);
+  // Reps first, then weight (typed and stepped): reps must survive.
+  const C1 = '#set-d1-conc__1';
+  await p.tap(`${C1} input[aria-label="reps"]`);
+  await p.keyboard.type('7');
+  await p.tap(`${C1} input[aria-label="weight"]`);
+  await p.keyboard.type('30');
+  await p.tap(`${C1} button[aria-label="Increase weight"]`);
+  const rw = [await p.inputValue(`${C1} input[aria-label="weight"]`), await p.inputValue(`${C1} input[aria-label="reps"]`)].join(' × ');
+  const ok4 = rw === '35 × 7';
+  failed += !ok4;
+  console.log(`${ok4 ? 'PASS' : 'FAIL'} ${name}: reps 7, then weight 30 and + gives ${rw}`);
+  // Edit a done set, change one field: the other keeps its logged value; Save commits.
+  await p.tap('#card-d1-fly button[aria-expanded]');
+  const F0 = '#set-d1-fly__0';
+  const row = () => p.textContent(`${F0} span.flex-1`);
+  const logged = await row();
+  await p.tap(`${F0} button:text-is("Edit")`);
+  await p.tap(`${F0} input[aria-label="reps"]`);
+  await p.keyboard.type('12');
+  await p.tap(`${F0} button:text-is("Save")`);
+  const edited = await row();
+  const ok5 = logged === '35 lb × —' && edited === '35 lb × 12';
+  failed += !ok5;
+  console.log(`${ok5 ? 'PASS' : 'FAIL'} ${name}: edit reps only: '${logged}' → '${edited}'`);
   // Skipping counts the exercise's sets toward progress; unskip removes them.
   const count = () => p.textContent('header button span.tabular-nums');
   const before = await count();

@@ -1,20 +1,25 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { gifUrl, type Exercise } from '../program';
-import { getLog, isDone, summary, type Focus, type Logs } from '../training';
-import type { SetLog } from '../store';
-import { SetRow } from './SetRow';
+import { getLog, isBarbell, isDone, isTimed, suggestions, summary, weightStep, type Focus, type Logs } from '../training';
+import { SetRow, type Draft, type Field } from './SetRow';
+
+/** A done set being edited: its draft lives here until Save or Cancel, so the logged values stay intact. */
+export type Edit = { exId: string; idx: number } & Draft;
 
 type Props = {
   ex: Exercise;
   logs: Logs;
+  edit: Edit | null;
   focus: Focus;
   collapsed: boolean;
   skipped: boolean;
   onSkip: (skip: boolean) => void;
   onToggle: () => void;
   onShowDetails: () => void;
-  onLog: (idx: number, patch: SetLog) => void;
-  onDone: (idx: number, values: { weight: string; reps: string }) => void;
+  onChange: (idx: number, field: Field, v: string) => void;
+  onDone: (idx: number) => void;
+  onEdit: (idx: number) => void;
+  onCancelEdit: () => void;
   onUndo: (idx: number) => void;
 };
 
@@ -24,10 +29,11 @@ export function Thumb({ ex, className }: { ex: Exercise; className: string }) {
     : <div className={`${className} grid place-items-center bg-bg text-2xl text-muted`} aria-hidden>{ex.placeholder === 'cardio' ? '⚡' : '🧘'}</div>;
 }
 
-export function ExerciseCard({ ex, logs, focus, collapsed, skipped, onSkip, onToggle, onShowDetails, onLog, onDone, onUndo }: Props) {
+export function ExerciseCard({ ex, logs, edit, focus, collapsed, skipped, onSkip, onToggle, onShowDetails, onChange, onDone, onEdit, onCancelEdit, onUndo }: Props) {
   const done = isDone(logs, ex);
   const doneCount = ex.sets.filter((_, i) => getLog(logs, ex.id, i).done).length;
   const subtitle = skipped ? 'Skipped' : doneCount === 0 && ex.startHint ? ex.startHint : summary(logs, ex);
+  const barbell = isBarbell(ex);
 
   return (
     <article id={`card-${ex.id}`}
@@ -53,10 +59,21 @@ export function ExerciseCard({ ex, logs, focus, collapsed, skipped, onSkip, onTo
           <motion.div key="sets" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22, ease: 'easeOut' }}>
             <div className="flex flex-col gap-2 px-3 pb-3">
-              {ex.sets.map((_, i) => (
-                <SetRow key={i} ex={ex} idx={i} logs={logs} isNext={focus?.exId === ex.id && focus.idx === i}
-                  onLog={patch => onLog(i, patch)} onDone={v => onDone(i, v)} onUndo={() => onUndo(i)} />
-              ))}
+              {ex.sets.map((set, i) => {
+                const log = getLog(logs, ex.id, i);
+                const editing = edit?.exId === ex.id && edit.idx === i;
+                const kind = isTimed(set) ? 'Cardio' : set.kind === 'wu' ? 'Warm-up' : 'Working';
+                return (
+                  <div key={i} id={`set-${ex.id}__${i}`}>
+                    <SetRow set={set} label={ex.sets.length > 1 ? `${kind} ${i + 1}` : kind}
+                      value={editing ? edit : { weight: log.weight ?? '', reps: log.reps ?? '' }}
+                      hint={suggestions(logs, ex, i)} barbell={barbell} weightStep={w => weightStep(ex, w)}
+                      done={!!log.done} editing={editing} isNext={focus?.exId === ex.id && focus.idx === i}
+                      onChange={(f, v) => onChange(i, f, v)} onDone={() => onDone(i)} onEdit={() => onEdit(i)}
+                      onCancel={onCancelEdit} onUndo={() => onUndo(i)} />
+                  </div>
+                );
+              })}
               {!done && (
                 <button type="button" onClick={() => onSkip(!skipped)}
                   className="h-11 self-center px-4 text-sm font-semibold text-muted active:scale-95">

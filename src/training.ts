@@ -70,6 +70,8 @@ export function suggestions(logs: Logs, ex: Exercise, i: number) {
   };
 }
 
+export type Suggestion = ReturnType<typeof suggestions>;
+
 export function platesPerSide(total: string) {
   const t = num(total);
   if (!t || t < 45) return '';

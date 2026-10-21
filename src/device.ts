@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export const vibrate = (pattern: number | number[]) => { try { navigator.vibrate?.(pattern); } catch { /* unsupported */ } };
 
 let audio: AudioContext | null = null;
-function beep(times: number) {
+export function beep(times: number) {
   try {
     audio ??= new AudioContext();
     void audio.resume();
@@ -20,36 +20,16 @@ function beep(times: number) {
   } catch { /* no audio */ }
 }
 
-/** Rest countdown. `left` is null when no timer is showing. */
+/** Rest period: when it ends and how long it was. The countdown display ticks inside RestTimer. */
+export type Rest = { endAt: number; total: number } | null;
+
 export function useRestTimer() {
-  const [left, setLeft] = useState<number | null>(null);
-  const [total, setTotal] = useState(60);
-  const endAt = useRef(0);
-
-  useEffect(() => {
-    if (left === null) return;
-    if (left <= 0) {
-      vibrate([100, 50, 100, 50, 200]);
-      beep(4);
-      const t = setTimeout(() => setLeft(null), 2200);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setLeft(Math.max(0, Math.round((endAt.current - Date.now()) / 1000))), 250);
-    return () => clearTimeout(t);
-  }, [left]);
-
-  const start = useCallback((seconds = 60) => {
-    endAt.current = Date.now() + seconds * 1000;
-    setTotal(seconds);
-    setLeft(seconds);
-  }, []);
-  const add = useCallback((seconds: number) => {
-    endAt.current = Math.max(endAt.current, Date.now()) + seconds * 1000;
-    setTotal(t => t + seconds);
-    setLeft(Math.round((endAt.current - Date.now()) / 1000));
-  }, []);
-  const stop = useCallback(() => setLeft(null), []);
-  return { left, total, start, add, stop };
+  const [rest, setRest] = useState<Rest>(null);
+  const start = useCallback((seconds = 60) => setRest({ endAt: Date.now() + seconds * 1000, total: seconds }), []);
+  const add = useCallback((seconds: number) =>
+    setRest(r => r && { endAt: Math.max(r.endAt, Date.now()) + seconds * 1000, total: r.total + seconds }), []);
+  const stop = useCallback(() => setRest(null), []);
+  return { rest, start, add, stop };
 }
 
 /** Keep the screen awake during a workout (on by default, re-acquired when the app returns). */

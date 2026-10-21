@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { DAYS, type Exercise } from './program';
-import { setKey, useAppState, type SetLog } from './store';
-import { findFocus, getLog, isDone } from './training';
+import { load, save, setKey, type AppState, type SetLog } from './store';
+import { findFocus, getLog, isDone, isTimed, suggestions } from './training';
 import { useReloadOnNewBuild, useRestTimer, useWakeLock, vibrate } from './device';
-import { ExerciseCard } from './components/ExerciseCard';
+import { ExerciseCard, type Edit } from './components/ExerciseCard';
+import type { Field } from './components/SetRow';
 import { DayNav, ExerciseDetails, NextButton, RestTimer } from './components/Chrome';
 
 const dayById = (id: number) => DAYS.find(d => d.id === id) ?? DAYS[0];
@@ -16,66 +18,93 @@ function dayProgress(logs: Record<string, SetLog>, skipped: Record<string, boole
   return { done, total: sets.length, pct: sets.length ? done / sets.length : 0 };
 }
 
+/**
+ * State ownership:
+ * - `state.logs[set]` holds each set's values. For an unlogged set that is the draft being typed (saved as typed,
+ *   so it survives reloads); Done marks it logged. Each field change patches only that field.
+ * - `edit` is the draft for a done set being edited; the logged values are untouched until Save.
+ * - Suggestions are derived from logs on render and only ever used as placeholders / stepper start values.
+ */
 export default function App() {
-  const [state, setState] = useAppState();
+  const [state, setState] = useState<AppState>(load);
+  const [edit, setEdit] = useState<Edit | null>(null);
   const day = dayById(state.day);
-  // The exercise Billy is actually working on (last one he logged), so "next" follows him, not program order.
+  // The exercise Billy is actually working on (last one he touched), so "next" follows him, not program order.
   const [activeExId, setActiveExId] = useState(() => state.resumeKey?.split('__')[0] ?? null);
   const [details, setDetails] = useState<Exercise | null>(null);
-  const [scrollTo, setScrollTo] = useState<string | null>(null);
   const timer = useRestTimer();
   const wake = useWakeLock();
   useReloadOnNewBuild();
 
   const focus = useMemo(() => findFocus(state.logs, day.exercises, activeExId, state.skipped), [state.logs, day, activeExId, state.skipped]);
   const focusKey = focus ? setKey(focus.exId, focus.idx) : null;
+  const focusEx = focus && day.exercises.find(e => e.id === focus.exId);
   const progress = dayProgress(state.logs, state.skipped, day.id);
   const isCollapsed = (ex: Exercise) => state.collapsed[ex.id] ?? (isDone(state.logs, ex) || !!state.skipped[ex.id]);
-  const focusEx = focus && day.exercises.find(e => e.id === focus.exId);
 
-  useEffect(() => {
-    if (state.resumeKey !== focusKey) setState(s => ({ ...s, resumeKey: focusKey }));
-  }, [focusKey, state.resumeKey, setState]);
+  useEffect(() => save({ ...state, resumeKey: focusKey }), [state, focusKey]);
 
-  // Restore the saved scroll position once, on page load; afterwards only Billy scrolls.
+  // Restore the saved scroll position once, on page load; afterwards only Billy (and the Next button) scrolls.
   useLayoutEffect(() => {
     history.scrollRestoration = 'manual';
     window.scrollTo(0, state.scrollY);
     let t = 0;
-    const save = () => { clearTimeout(t); t = window.setTimeout(() => setState(s => ({ ...s, scrollY: Math.round(scrollY) })), 300); };
-    addEventListener('scroll', save, { passive: true });
-    return () => removeEventListener('scroll', save);
+    const onScroll = () => { clearTimeout(t); t = window.setTimeout(() => setState(s => ({ ...s, scrollY: Math.round(scrollY) })), 300); };
+    addEventListener('scroll', onScroll, { passive: true });
+    return () => { clearTimeout(t); removeEventListener('scroll', onScroll); };
   }, []);
 
-  useEffect(() => {
-    if (!scrollTo) return;
-    document.getElementById(scrollTo)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setScrollTo(null);
-  }, [scrollTo]);
-
-  const updateLog = (exId: string, idx: number, patch: SetLog, collapse?: 'auto') =>
+  const patchLog = (exId: string, idx: number, patch: SetLog, autoCollapse = false) =>
     setState(s => {
       const key = setKey(exId, idx);
       const collapsed = { ...s.collapsed };
-      if (collapse === 'auto') delete collapsed[exId];
+      if (autoCollapse) delete collapsed[exId];
       return { ...s, collapsed, logs: { ...s.logs, [key]: { ...s.logs[key], ...patch } } };
     });
 
-  const done = (ex: Exercise, idx: number, values: { weight: string; reps: string }) => {
+  const isEditing = (ex: Exercise, idx: number) => edit?.exId === ex.id && edit.idx === idx;
+
+  const change = (ex: Exercise, idx: number, field: Field, v: string) => {
+    if (isEditing(ex, idx)) return setEdit(e => e && { ...e, [field]: v });
+    setActiveExId(ex.id);
+    patchLog(ex.id, idx, { [field]: v });
+  };
+
+  // Done (or Save while editing): an empty field takes the suggestion shown as its placeholder.
+  const done = (ex: Exercise, idx: number) => {
+    const set = ex.sets[idx];
+    const log = getLog(state.logs, ex.id, idx);
+    const draft = isEditing(ex, idx) && edit ? edit : { weight: log.weight ?? '', reps: log.reps ?? '' };
+    const hint = suggestions(state.logs, ex, idx);
+    const values = isTimed(set)
+      ? { weight: '', reps: draft.reps || set.reps }
+      : { weight: draft.weight || hint.weight, reps: draft.reps || hint.reps };
     (document.activeElement as HTMLElement | null)?.blur();
+    setEdit(null);
+    if (log.done) return patchLog(ex.id, idx, values);
     vibrate([40, 30, 40]);
     setActiveExId(ex.id);
-    updateLog(ex.id, idx, { ...values, done: true }, 'auto');
+    patchLog(ex.id, idx, { ...values, done: true }, true);
     timer.start(60);
+  };
+
+  const startEdit = (ex: Exercise, idx: number) => {
+    const log = getLog(state.logs, ex.id, idx);
+    setEdit({ exId: ex.id, idx, weight: log.weight ?? '', reps: log.reps ?? '' });
   };
 
   const undo = (ex: Exercise, idx: number) => {
     vibrate(20);
     setActiveExId(ex.id);
-    updateLog(ex.id, idx, { done: false }, 'auto');
+    patchLog(ex.id, idx, { done: false }, true);
   };
 
-  // Skip collapses the card (auto); unskip reopens it. No scrolling either way.
+  const toggle = (ex: Exercise) => {
+    if (edit?.exId === ex.id) setEdit(null);
+    setState(s => ({ ...s, collapsed: { ...s.collapsed, [ex.id]: !isCollapsed(ex) } }));
+  };
+
+  // Skip collapses the card; unskip reopens it. No scrolling either way.
   const setSkipped = (ex: Exercise, skip: boolean) => {
     vibrate(10);
     setState(s => {
@@ -86,16 +115,20 @@ export default function App() {
     });
   };
 
+  // The only programmatic scroll: expand the next exercise, then bring its set into view.
   const goNext = () => {
-    if (!focus || !focusEx) return;
+    if (!focus) return;
     vibrate(10);
-    setActiveExId(focus.exId);
-    setState(s => ({ ...s, collapsed: { ...s.collapsed, [focus.exId]: false } }));
-    setScrollTo(`set-${focusKey}`);
+    flushSync(() => {
+      setActiveExId(focus.exId);
+      setState(s => ({ ...s, collapsed: { ...s.collapsed, [focus.exId]: false } }));
+    });
+    document.getElementById(`set-${focusKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   const selectDay = (id: number) => {
     vibrate(10);
+    setEdit(null);
     setActiveExId(null);
     setState(s => ({ ...s, day: id, scrollY: 0 }));
     window.scrollTo(0, 0);
@@ -103,6 +136,7 @@ export default function App() {
 
   const resetDay = () => {
     if (!confirm(`Reset all logged sets for Day ${day.id}?`)) return;
+    setEdit(null);
     setActiveExId(null);
     timer.stop();
     setState(s => {
@@ -149,13 +183,15 @@ export default function App() {
 
       <main className="flex flex-col gap-3 p-3">
         {day.exercises.map(ex => (
-          <ExerciseCard key={ex.id} ex={ex} logs={state.logs} focus={focus} collapsed={isCollapsed(ex)}
-            onToggle={() => setState(s => ({ ...s, collapsed: { ...s.collapsed, [ex.id]: !isCollapsed(ex) } }))}
+          <ExerciseCard key={ex.id} ex={ex} logs={state.logs} edit={edit} focus={focus} collapsed={isCollapsed(ex)}
             skipped={!!state.skipped[ex.id]}
+            onToggle={() => toggle(ex)}
             onSkip={skip => setSkipped(ex, skip)}
             onShowDetails={() => setDetails(ex)}
-            onLog={(i, patch) => { setActiveExId(ex.id); updateLog(ex.id, i, patch); }}
-            onDone={(i, v) => done(ex, i, v)}
+            onChange={(i, f, v) => change(ex, i, f, v)}
+            onDone={i => done(ex, i)}
+            onEdit={i => startEdit(ex, i)}
+            onCancelEdit={() => setEdit(null)}
             onUndo={i => undo(ex, i)} />
         ))}
         <footer className="mt-2 text-xs leading-relaxed text-muted">
@@ -165,11 +201,11 @@ export default function App() {
       </main>
 
       <NextButton
-        targetId={focus ? (isCollapsed(focusEx!) ? `card-${focus.exId}` : `set-${focusKey}`) : null}
-        label={focusEx ? `${focusEx.name}${focusEx.sets.length > 1 ? ` · ${focus!.idx + 1}` : ''}` : ''}
-        raised={timer.left !== null}
+        targetId={focus && focusEx ? (isCollapsed(focusEx) ? `card-${focus.exId}` : `set-${focusKey}`) : null}
+        label={focus && focusEx ? `${focusEx.name}${focusEx.sets.length > 1 ? ` · ${focus.idx + 1}` : ''}` : ''}
+        raised={timer.rest !== null}
         onGo={goNext} />
-      <RestTimer left={timer.left} total={timer.total} onAdd={() => timer.add(15)} onSkip={timer.stop} />
+      <RestTimer rest={timer.rest} onAdd={() => timer.add(15)} onEnd={timer.stop} />
       <DayNav day={day.id} pctFor={id => dayProgress(state.logs, state.skipped, id).pct} onSelect={selectDay} />
       <ExerciseDetails ex={details} logs={state.logs} onClose={() => setDetails(null)} />
     </div>

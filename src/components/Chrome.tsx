@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Drawer } from 'vaul';
 import { DAYS, type Exercise } from '../program';
 import { getLog, isTimed, type Logs } from '../training';
+import { beep, vibrate, type Rest } from '../device';
 import { Thumb } from './ExerciseCard';
 
 export function Ring({ pct, size, stroke, color }: { pct: number; size: number; stroke: number; color: string }) {
@@ -34,19 +35,36 @@ export function DayNav({ day, pctFor, onSelect }: { day: number; pctFor: (id: nu
   );
 }
 
-export function RestTimer({ left, total, onAdd, onSkip }: { left: number | null; total: number; onAdd: () => void; onSkip: () => void }) {
+/** Countdown above the tab bar. Ticks on its own so the rest of the app doesn't re-render every second. */
+export function RestTimer({ rest, onAdd, onEnd }: { rest: Rest; onAdd: () => void; onEnd: () => void }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!rest) return;
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [rest]);
+  const left = rest ? Math.min(rest.total, Math.max(0, Math.ceil((rest.endAt - now) / 1000))) : null;
+  const finished = left === 0;
+  useEffect(() => {
+    if (!finished) return;
+    vibrate([100, 50, 100, 50, 200]);
+    beep(4);
+    const t = setTimeout(onEnd, 2200);
+    return () => clearTimeout(t);
+  }, [finished, onEnd]);
+
   return (
     <AnimatePresence>
-      {left !== null && (
+      {rest && left !== null && (
         <motion.div role="status" initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
           className="fixed inset-x-2.5 bottom-[calc(64px+env(safe-area-inset-bottom))] z-30 flex items-center gap-3 rounded-3xl border border-accent/40 bg-[#1b1213] p-3 shadow-2xl">
           <span className="relative grid place-items-center">
-            <Ring pct={total ? left / total : 0} size={56} stroke={5} color={left <= 0 ? 'var(--color-ok)' : left <= 10 ? 'var(--color-accent-2)' : 'var(--color-accent)'} />
+            <Ring pct={left / rest.total} size={56} stroke={5} color={left <= 0 ? 'var(--color-ok)' : left <= 10 ? 'var(--color-accent-2)' : 'var(--color-accent)'} />
             <span className="absolute text-lg font-black tabular-nums">{left}</span>
           </span>
           <span className="flex-1 font-bold">{left > 0 ? 'Rest' : 'Go!'}</span>
           <button type="button" onClick={onAdd} className="h-12 rounded-xl border border-line px-4 font-bold active:scale-95">+15s</button>
-          <button type="button" onClick={onSkip} className="h-12 rounded-xl bg-accent px-4 font-bold text-black active:scale-95">Skip</button>
+          <button type="button" onClick={onEnd} className="h-12 rounded-xl bg-accent px-4 font-bold text-black active:scale-95">Skip</button>
         </motion.div>
       )}
     </AnimatePresence>
@@ -86,7 +104,10 @@ export function ExerciseDetails({ ex, logs, onClose }: { ex: Exercise | null; lo
           <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-line" />
           {ex && (
             <>
-              <Drawer.Title className="text-xl font-bold">{ex.name}</Drawer.Title>
+              <div className="flex items-start gap-3">
+                <Drawer.Title className="flex-1 text-xl font-bold">{ex.name}</Drawer.Title>
+                <Drawer.Close className="-mt-1 h-11 rounded-xl border border-line px-4 text-sm font-bold active:scale-95">Close</Drawer.Close>
+              </div>
               <Drawer.Description className="mt-1 text-sm text-muted">
                 {[ex.startHint, ex.weak && 'Closest available demo'].filter(Boolean).join(' · ')}
               </Drawer.Description>

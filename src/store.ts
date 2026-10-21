@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react';
-
 /** localStorage format (key 'bag_tracker_v1') is shared with every earlier version of the app. */
 export type SetLog = { weight?: string; reps?: string; done?: boolean };
 export type AppState = {
   day: number;
   logs: Record<string, SetLog>; // key: `${exerciseId}__${setIndex}`
   scrollY: number;
-  resumeKey: string | null;
+  resumeKey: string | null; // the next set to do, written on save
   headerCollapsed: boolean;
   collapsed: Record<string, boolean>; // per-exercise override; missing = collapse when all sets done
   skipped: Record<string, boolean>; // exercises skipped today: count as complete for progress, never 'next'
@@ -24,14 +22,16 @@ const LOG_KEY_MIGRATIONS: Record<string, string> = {
 
 export const setKey = (exId: string, idx: number) => `${exId}__${idx}`;
 
-function load(): AppState {
+export function load(): AppState {
   const fallback: AppState = { day: 1, logs: {}, scrollY: 0, resumeKey: null, headerCollapsed: false, collapsed: {}, skipped: {} };
   try {
     const p = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!p) return fallback;
-    // Keep only the known fields of each set log (older builds may have stored UI flags).
+    // Keep only the known fields of each set log (older builds stored UI flags, and the pre-React build
+    // could write reps/weight as the string 'NaN').
+    const value = (v: unknown) => (typeof v === 'string' && v !== 'NaN' ? v : undefined);
     const logs: Record<string, SetLog> = {};
-    for (const [k, v] of Object.entries<SetLog>(p.logs || {})) logs[k] = { weight: v.weight, reps: v.reps, done: v.done };
+    for (const [k, v] of Object.entries<SetLog>(p.logs || {})) logs[k] = { weight: value(v.weight), reps: value(v.reps), done: v.done };
     for (const [from, to] of Object.entries(LOG_KEY_MIGRATIONS)) {
       if (logs[from] && !logs[to]) logs[to] = logs[from];
       delete logs[from];
@@ -50,10 +50,6 @@ function load(): AppState {
   }
 }
 
-export function useAppState() {
-  const [state, setState] = useState(load);
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* storage full/blocked */ }
-  }, [state]);
-  return [state, setState] as const;
+export function save(state: AppState) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* storage full/blocked */ }
 }
