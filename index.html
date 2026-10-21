@@ -403,6 +403,21 @@
   .sheet ol .k-work { color: var(--work); font-weight: 800; }
   .toast { top: calc(12px + var(--safe-t)); }
 
+  /* Collapsible exercise cards */
+  .ex-index-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: -4px; }
+  .chev-btn { min-width: 44px; min-height: 44px; margin: -6px -6px 0 0; border-radius: 12px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); font-size: 0.9rem; font-weight: 800; }
+  .card-top[data-toggle-area] { cursor: pointer; }
+  .collapsed-row { all: unset; box-sizing: border-box; width: 100%; min-height: 64px; padding: 10px 12px; display: grid; grid-template-columns: 40px 1fr 32px; align-items: center; gap: 12px; cursor: pointer; }
+  .collapsed-row:focus-visible { outline: 3px solid var(--accent2); outline-offset: -3px; border-radius: var(--radius); }
+  .cr-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.78rem; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .cr-icon.ok { background: var(--ok); color: #0b0f14; border-color: transparent; font-size: 1.1rem; }
+  .cr-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .cr-text strong { font-size: 0.98rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cr-text small { color: var(--muted); font-size: 0.8rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .cr-chev { color: var(--muted); font-size: 1rem; text-align: center; }
+  .card.collapsed.has-next { border-color: rgba(255,138,61,0.6); }
+  .card.collapsed.has-next .cr-text small { color: var(--accent2); }
+
   .btn.done-btn.outline { background: transparent; border: 1.5px solid rgba(255,138,61,0.6); color: var(--accent2); }
   .header-body .progress-row { display: none; } /* progress lives in the always-visible top bar + bottom nav rings */
   .set.done:not(.open) { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; }
@@ -611,7 +626,7 @@ const DAYS = [
 ];
 
 function defaultState() {
-  return { day: 1, logs: {}, scrollY: 0, resumeKey: null, headerCollapsed: false };
+  return { day: 1, logs: {}, scrollY: 0, resumeKey: null, headerCollapsed: false, collapsed: {} };
 }
 
 /** Day 4 stretches used to be sets 1-4 of 'd4-cardio'; they are now their own exercises. Move any old logs (same {weight,reps,done} shape). */
@@ -639,7 +654,9 @@ function load() {
       logs: migrateLogs(parsed.logs || {}),
       scrollY: typeof parsed.scrollY === 'number' ? parsed.scrollY : 0,
       resumeKey: parsed.resumeKey || null,
-      headerCollapsed: !!parsed.headerCollapsed
+      headerCollapsed: !!parsed.headerCollapsed,
+      // Optional (added later): per-exercise card collapse override { [exId]: true|false }. Missing = auto (collapse when all sets done).
+      collapsed: (parsed.collapsed && typeof parsed.collapsed === 'object') ? parsed.collapsed : {}
     };
   } catch { return defaultState(); }
 }
@@ -750,6 +767,57 @@ function dayStats(day) {
 
 function exerciseDone(ex) {
   return ex.sets.every((_, i) => getLog(ex.id, i).done);
+}
+
+/** UI-only: exercise Billy last logged / interacted with (not program order). */
+let activeExId = null;
+(function initActiveFromResume() {
+  const k = state.resumeKey;
+  if (!k) return;
+  const exId = String(k).split('__')[0];
+  const day = DAYS.find(d => d.id === state.day) || DAYS[0];
+  if (day.exercises.some(e => e.id === exId)) activeExId = exId;
+})();
+
+/**
+ * Next set to highlight: remaining sets of the active exercise first, then the next
+ * unfinished exercise BELOW it, wrapping to earlier (skipped) ones. Falls back to program order.
+ */
+function findFocus(day) {
+  const exs = day.exercises;
+  const ai = activeExId ? exs.findIndex(e => e.id === activeExId) : -1;
+  if (ai < 0) return findNextIncomplete(day);
+  const order = exs.slice(ai).concat(exs.slice(0, ai));
+  for (const ex of order) {
+    for (let i = 0; i < ex.sets.length; i++) {
+      if (!getLog(ex.id, i).done) return { exId: ex.id, setIdx: i, key: setKey(ex.id, i) };
+    }
+  }
+  return null;
+}
+
+function isCollapsed(ex) {
+  const o = state.collapsed ? state.collapsed[ex.id] : undefined;
+  return typeof o === 'boolean' ? o : exerciseDone(ex);
+}
+
+function exerciseSummary(ex) {
+  const rows = ex.sets.map((st, i) => ({ st, log: getLog(ex.id, i) }));
+  const doneN = rows.filter(r => r.log.done).length;
+  const total = ex.sets.length;
+  const word = total === 1 ? 'set' : 'sets';
+  if (doneN < total) return `${doneN}/${total} ${word} done`;
+  if (rows.every(r => isTimedSet(r.st))) return rows.map(r => r.log.reps || r.st.reps).join(' · ');
+  let top = null;
+  rows.forEach(r => {
+    const w = parseFloat(r.log.weight);
+    const reps = parseFloat(r.log.reps) || 0;
+    if (Number.isFinite(w) && w > 0 && (!top || w > top.w || (w === top.w && reps > top.r))) top = { w, r: reps, rl: r.log.reps };
+  });
+  if (top) return `${total} ${word} · top ${top.w} lb${top.rl ? ` × ${top.rl}` : ''}`;
+  const wu = rows.filter(r => r.st.kind === 'wu').length;
+  const work = total - wu;
+  return [wu ? `warm-up${wu > 1 ? 's' : ''} ${wu}` : '', work ? `work ${work}` : ''].filter(Boolean).join(' · ');
 }
 
 function findNextIncomplete(day) {
@@ -1006,7 +1074,7 @@ function displayValues(ex, setIdx) {
 }
 
 function updateResumeKey() {
-  const next = findNextIncomplete(currentDay());
+  const next = findFocus(currentDay());
   state.resumeKey = next ? next.key : null;
   save();
 }
@@ -1038,6 +1106,8 @@ function renderDayPicker() {
       persistScroll();
       state.day = Number(btn.dataset.day);
       state.scrollY = 0;
+      activeExId = null;
+      app.style.minHeight = '';
       updateResumeKey();
       save();
       didInitialResume = false;
@@ -1062,7 +1132,7 @@ function renderProgress() {
 
 function render(opts = {}) {
   const day = currentDay();
-  const focus = findNextIncomplete(day);
+  const focus = findFocus(day);
   state.resumeKey = focus ? focus.key : null;
   renderDayPicker();
   renderProgress();
@@ -1089,12 +1159,59 @@ function render(opts = {}) {
       }
       setTimeout(() => { suppressScrollSave = false; }, 250);
     });
-  } else if (opts.scrollToFocus && focus) {
-    raf(() => {
-      const el = document.querySelector(`.set[data-focus-key="${focus.key}"]`);
-      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
   }
+}
+
+/**
+ * Re-render while keeping `exId`'s card at the same on-screen position (compensates for sets/cards
+ * collapsing above or inside it). Never scrolls to program-order "next".
+ */
+function renderAnchored(exId, opts = {}) {
+  const sel = exId ? `.card[data-ex="${exId}"]` : null;
+  const card0 = sel ? app.querySelector(sel) : null;
+  const top0 = card0 ? card0.getBoundingClientRect().top : null;
+  // Hold page height during the rebuild so the browser can't clamp scroll when content shrinks.
+  app.style.minHeight = app.offsetHeight + 'px';
+  suppressScrollSave = true;
+  render(opts);
+  const card1 = sel ? app.querySelector(sel) : null;
+  if (card1 && top0 != null) {
+    const d = card1.getBoundingClientRect().top - top0;
+    if (Math.abs(d) > 0.5) window.scrollTo(0, window.scrollY + d);
+  }
+  // Release the held height as far as possible without moving the viewport.
+  const slack = document.documentElement.scrollHeight - (window.scrollY + window.innerHeight);
+  const last = app.lastElementChild;
+  const natural = last ? (last.getBoundingClientRect().bottom - app.getBoundingClientRect().top + 12) : 0;
+  const keep = Math.max(natural, app.offsetHeight - Math.max(0, slack));
+  app.style.minHeight = keep > natural + 1 ? Math.ceil(keep) + 'px' : '';
+  setTimeout(() => { suppressScrollSave = false; persistScroll(); }, 50);
+}
+
+/** If the newly highlighted set is in the same card but below the fold, nudge it into view (that card only). */
+function revealSetInCard(exId, focus) {
+  if (!focus || focus.exId !== exId) return;
+  const el = document.querySelector(`.set[data-focus-key="${focus.key}"]`);
+  const card = app.querySelector(`.card[data-ex="${exId}"]`);
+  if (!el || !card) return;
+  const r = el.getBoundingClientRect();
+  const reserve = 64 + 120 + 16; // bottom nav + rest sheet + breathing room
+  const limit = window.innerHeight - reserve;
+  if (r.bottom <= limit) return;
+  const headerH = appHeader.getBoundingClientRect().bottom;
+  const maxUp = card.getBoundingClientRect().top - headerH - 8; // never scroll the card's top under the header
+  const delta = Math.min(r.bottom - limit, Math.max(0, maxUp));
+  if (delta > 0) window.scrollBy({ top: delta, behavior: 'smooth' });
+}
+
+function toggleCard(exId) {
+  const ex = currentDay().exercises.find(e => e.id === exId);
+  if (!ex) return;
+  if (!state.collapsed) state.collapsed = {};
+  state.collapsed[exId] = !isCollapsed(ex);
+  save();
+  haptic(8);
+  renderAnchored(exId);
 }
 
 function renderExercise(ex, focus, n = 0) {
@@ -1106,11 +1223,21 @@ function renderExercise(ex, focus, n = 0) {
   const doneCount = ex.sets.filter((_, i) => getLog(ex.id, i).done).length;
   const dots = `<span class="set-dots" aria-hidden="true">${ex.sets.map((_, i) => `<i class="${getLog(ex.id, i).done ? 'on' : (focus && focus.exId === ex.id && focus.setIdx === i ? 'next' : '')}"></i>`).join('')}</span>`;
   const setWord = ex.sets.length === 1 ? 'set' : 'sets';
+  if (isCollapsed(ex)) {
+    const isNext = focus && focus.exId === ex.id;
+    return `<article class="card collapsed ${done ? 'done' : ''} ${isNext ? 'has-next' : ''}" data-ex="${ex.id}">
+      <button type="button" class="collapsed-row card-toggle" data-toggle="${ex.id}" aria-expanded="false" aria-label="${ex.name}: ${exerciseSummary(ex)}. Expand">
+        <span class="cr-icon ${done ? 'ok' : ''}" aria-hidden="true">${done ? '✓' : `${doneCount}/${ex.sets.length}`}</span>
+        <span class="cr-text"><strong>${ex.name}</strong><small>${isNext ? 'Next up · ' : ''}${exerciseSummary(ex)}</small></span>
+        <span class="cr-chev" aria-hidden="true">▾</span>
+      </button>
+    </article>`;
+  }
   return `<article class="card ${done ? 'done' : ''}" data-ex="${ex.id}">
-    <div class="card-top">
+    <div class="card-top" data-toggle-area="${ex.id}">
       <div class="media ${ex.exerciseId ? '' : 'is-ph'}">${media}</div>
       <div class="ex-meta">
-        <div class="ex-index">Exercise ${n + 1}</div>
+        <div class="ex-index-row"><div class="ex-index">Exercise ${n + 1}</div><button type="button" class="card-toggle chev-btn" data-toggle="${ex.id}" aria-expanded="true" aria-label="Collapse ${ex.name}">▴</button></div>
         <h2>${ex.name}</h2>
         ${ex.startHint ? `<div class="start-hint"><strong>${ex.startHint}</strong><span class="hint-sub">· adjust anytime</span></div>` : ''}
         <div class="badge-row">
@@ -1190,7 +1317,7 @@ function renderSet(ex, s, i, focus) {
         </div>
       </div>
     </div>${plateHtml}`;
-  const next = findNextIncomplete(currentDay());
+  const next = focus;
   const hasNextAfter = next && !(next.exId === ex.id && next.setIdx === i);
   const doneLabel = timed
     ? (log.done ? 'Undo' : 'Mark done')
@@ -1223,12 +1350,13 @@ function scheduleWarmupRefresh() {
       selStart: ae.selectionStart,
       selEnd: ae.selectionEnd
     } : null;
-    render();
+    const anchorEx = focusInfo && focusInfo.setKey ? focusInfo.setKey.split('__')[0] : activeExId;
+    renderAnchored(anchorEx);
     if (focusInfo && focusInfo.setKey) {
       const setEl = document.querySelector(`.set[data-focus-key="${focusInfo.setKey}"]`);
       const inp = setEl?.querySelector(`input[data-field="${focusInfo.field}"]`);
       if (inp) {
-        inp.focus();
+        inp.focus({ preventScroll: true });
         try { inp.setSelectionRange(focusInfo.selStart, focusInfo.selEnd); } catch (_) {}
       }
     }
@@ -1238,6 +1366,18 @@ function scheduleWarmupRefresh() {
 function bindCards() {
   app.querySelectorAll('[data-sheet]').forEach(btn => {
     btn.addEventListener('click', () => openExerciseSheet(btn.dataset.sheet));
+  });
+  app.querySelectorAll('[data-toggle]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); toggleCard(btn.dataset.toggle); });
+  });
+  app.querySelectorAll('[data-toggle-area]').forEach(area => {
+    area.addEventListener('click', (e) => {
+      if (e.target.closest('button, a, input')) return; // GIF button / chevron handle themselves
+      toggleCard(area.dataset.toggleArea);
+    });
+  });
+  app.querySelectorAll('.card input').forEach(inp => {
+    inp.addEventListener('focus', () => { activeExId = inp.closest('.card').dataset.ex; });
   });
   app.querySelectorAll('.card').forEach(card => {
     const exId = card.dataset.ex;
@@ -1314,16 +1454,21 @@ function bindCards() {
         const reps = repsEl ? repsEl.value : (log.reps || '');
         const timed = setEl.dataset.mode === 'timed';
         setLog(exId, idx, { done: nextDone, weight, reps });
+        activeExId = exId; // highlight follows where he actually is, not program order
+        const ex = currentDay().exercises.find(e => e.id === exId);
+        if (state.collapsed && ex && (nextDone ? exerciseDone(ex) : true)) delete state.collapsed[exId]; // back to auto
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
         if (nextDone) {
           haptic([40, 30, 40]);
           // Timed cardio still gets rest so the program cadence stays consistent
           startRest(60);
           updateResumeKey();
-          render({ scrollToFocus: true });
+          renderAnchored(exId);
+          revealSetInCard(exId, findFocus(currentDay()));
         } else {
           haptic(20);
           updateResumeKey();
-          render();
+          renderAnchored(exId);
         }
       });
     });
@@ -1338,7 +1483,7 @@ function updateNextFab(focus) {
   const ex = currentDay().exercises.find(e => e.id === focus.exId);
   const s = ex.sets[focus.setIdx];
   fab.innerHTML = `<span class="fab-arrow" aria-hidden="true">↓</span> Next: ${ex.name}${ex.sets.length > 1 ? ` · Set ${focus.setIdx + 1}` : ''}${s && s.kind === 'work' && !isTimedSet(s) ? ' (working)' : ''}`;
-  const el = document.querySelector(`.set[data-focus-key="${focus.key}"]`);
+  const el = document.querySelector(`.set[data-focus-key="${focus.key}"]`) || app.querySelector(`.card[data-ex="${focus.exId}"]`);
   if (!el || !('IntersectionObserver' in window)) { fab.classList.remove('show'); return; }
   nextFabObserver = new IntersectionObserver(entries => {
     entries.forEach(en => {
@@ -1350,8 +1495,11 @@ function updateNextFab(focus) {
   nextFabObserver.observe(el);
 }
 $('nextFab').addEventListener('click', () => {
-  const focus = findNextIncomplete(currentDay());
+  const focus = findFocus(currentDay());
   if (!focus) return;
+  activeExId = focus.exId;
+  const ex = currentDay().exercises.find(e => e.id === focus.exId);
+  if (ex && isCollapsed(ex)) { state.collapsed[focus.exId] = false; save(); renderAnchored(focus.exId); }
   const el = document.querySelector(`.set[data-focus-key="${focus.key}"]`);
   if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   haptic(10);
@@ -1380,7 +1528,7 @@ function openExerciseSheet(exId) {
   bd.classList.add('show');
   bd.setAttribute('aria-hidden', 'false');
   $('sheetClose').addEventListener('click', closeExerciseSheet);
-  $('sheetClose').focus();
+  $('sheetClose').focus({ preventScroll: true });
   haptic(8);
 }
 function closeExerciseSheet() {
@@ -1388,7 +1536,7 @@ function closeExerciseSheet() {
   if (!bd.classList.contains('show')) return;
   bd.classList.remove('show');
   bd.setAttribute('aria-hidden', 'true');
-  if (sheetReturnFocus && sheetReturnFocus.focus) sheetReturnFocus.focus();
+  if (sheetReturnFocus && sheetReturnFocus.focus) sheetReturnFocus.focus({ preventScroll: true });
 }
 $('sheetBackdrop').addEventListener('click', e => { if (e.target.id === 'sheetBackdrop') closeExerciseSheet(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeExerciseSheet(); });
@@ -1471,7 +1619,10 @@ $('resetDay').addEventListener('click', () => {
     ex.sets.forEach((_, i) => {
       delete state.logs[setKey(ex.id, i)];
     });
+    if (state.collapsed) delete state.collapsed[ex.id];
   });
+  activeExId = null;
+  app.style.minHeight = '';
   state.scrollY = 0;
   state.resumeKey = null;
   save();
