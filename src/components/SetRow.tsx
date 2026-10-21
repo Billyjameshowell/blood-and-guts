@@ -52,7 +52,7 @@ export function SetRow({ ex, idx, logs, isNext, onLog, onDone, onUndo }: Props) 
   const head = (
     <div className="flex items-baseline justify-between gap-2 text-sm">
       <span className="font-bold"><span className={set.kind === 'wu' ? 'text-wu' : 'text-accent'}>{kind}</span>{ex.sets.length > 1 && ` ${idx + 1}`}</span>
-      <span className="text-muted">{target}{log.done && <span className="ml-1.5 text-ok">✓</span>}</span>
+      {!log.done && <span className="text-muted">{target}</span>}
     </div>
   );
 
@@ -92,10 +92,11 @@ export function SetRow({ ex, idx, logs, isNext, onLog, onDone, onUndo }: Props) 
             <Stepper label="reps" value={reps} placeholder={hint.reps || set.reps}
               start={parseFloat(hint.reps) || repFloor(set.reps)} step={1} onChange={v => onLog({ reps: v })} />
           </div>
-          {(hint.fromWarmup || plates) && (
+          {/* Suggestions only on the unlogged set; an edited done set shows what was logged. */}
+          {((hint.fromWarmup && !log.done) || plates) && (
             <p className="mt-1.5 text-xs text-muted">
-              {hint.fromWarmup && <>Suggested <strong className="text-accent-2">{hint.fromWarmup.weight} lb</strong> from warm-up {hint.fromWarmup.from}</>}
-              {hint.fromWarmup && plates && ' · '}
+              {hint.fromWarmup && !log.done && <>Suggested <strong className="text-accent-2">{hint.fromWarmup.weight} lb</strong> from warm-up {hint.fromWarmup.from}</>}
+              {hint.fromWarmup && !log.done && plates && ' · '}
               {plates}
             </p>
           )}

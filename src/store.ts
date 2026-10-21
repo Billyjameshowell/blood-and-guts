@@ -29,7 +29,9 @@ function load(): AppState {
   try {
     const p = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (!p) return fallback;
-    const logs: Record<string, SetLog> = p.logs || {};
+    // Keep only the known fields of each set log (older builds may have stored UI flags).
+    const logs: Record<string, SetLog> = {};
+    for (const [k, v] of Object.entries<SetLog>(p.logs || {})) logs[k] = { weight: v.weight, reps: v.reps, done: v.done };
     for (const [from, to] of Object.entries(LOG_KEY_MIGRATIONS)) {
       if (logs[from] && !logs[to]) logs[to] = logs[from];
       delete logs[from];
