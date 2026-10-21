@@ -273,6 +273,143 @@
   }
   .toast.show { display: block; animation: fade 2.2s ease forwards; }
   @keyframes fade { 0%{opacity:0; transform:translate(-50%,-6px)} 15%{opacity:1; transform:translate(-50%,0)} 80%{opacity:1} 100%{opacity:0} }
+
+  /* ===== UI v2: mobile patterns (bottom nav, sheets, steppers, thumb-zone FAB) ===== */
+  :root { --nav-h: 64px; --safe-t: env(safe-area-inset-top, 0px); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); --muted: #9aaabf; }
+  body { padding-bottom: calc(var(--nav-h) + 24px + var(--safe-b)); padding-left: var(--safe-l); padding-right: var(--safe-r); }
+  body.resting { padding-bottom: calc(var(--nav-h) + 132px + var(--safe-b)); }
+  header.app { padding-top: var(--safe-t); }
+  header.app .slim-bar { display: block; max-width: 96px; }
+  .slim-count { color: var(--muted); font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .chevron { width: 44px; height: 44px; }
+  .actions { flex-wrap: wrap; }
+  .actions .btn, .wake-pill { min-height: 48px; }
+  button { touch-action: manipulation; }
+  .btn, .step, .day-btn, .wake-pill, .tip-x, .next-fab, .media-btn, .sheet-close { transition: transform .08s ease, filter .08s ease; }
+  .btn:active, .step:active, .day-btn:active, .wake-pill:active, .next-fab:active, .media-btn:active { transform: scale(0.96); filter: brightness(1.15); }
+  :focus-visible { outline: 3px solid var(--accent2); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+  /* Day hero */
+  .day-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding: 2px 2px 0; }
+  .day-hero h2 { margin: 0; font-size: 1.35rem; letter-spacing: 0.01em; }
+  .day-hero .eyebrow { color: var(--muted); font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+  .day-hero .meta { color: var(--muted); font-size: 0.82rem; font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
+  .day-hero .meta strong { color: var(--text); }
+
+  /* Bottom navigation bar (Material 3 nav bar / iOS tab bar) */
+  .day-picker.bottom-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; margin: 0;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+    padding: 6px calc(8px + var(--safe-r)) calc(6px + var(--safe-b)) calc(8px + var(--safe-l));
+    background: rgba(14,19,26,0.96); border-top: 1px solid var(--border);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  }
+  .bottom-nav .day-btn {
+    min-height: 52px; border: 0; background: transparent; border-radius: 16px; gap: 3px;
+    color: var(--muted); font-size: 0.78rem; font-weight: 750; padding: 4px 0;
+  }
+  .bottom-nav .day-btn .nav-ind {
+    position: relative; width: 56px; height: 28px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  }
+  .bottom-nav .day-btn svg { width: 26px; height: 26px; transform: rotate(-90deg); }
+  .bottom-nav .day-btn svg circle { fill: none; stroke-width: 3.5; }
+  .bottom-nav .day-btn svg .trk { stroke: #2a3544; }
+  .bottom-nav .day-btn svg .val { stroke: var(--ok); stroke-linecap: round; transition: stroke-dashoffset .3s ease; }
+  .bottom-nav .day-btn .nav-num { position: absolute; font-size: 0.7rem; font-weight: 900; color: var(--text); }
+  .bottom-nav .day-btn small { font-size: 0.72rem; color: inherit; font-weight: 700; }
+  .bottom-nav .day-btn.active { background: transparent; color: var(--text); }
+  .bottom-nav .day-btn.active .nav-ind { background: rgba(255,106,69,0.22); }
+  .bottom-nav .day-btn.active small { color: var(--text); }
+
+  /* Cards */
+  .card-top { grid-template-columns: 104px 1fr; gap: 12px; padding: 12px; }
+  .media { width: 104px; height: 104px; background: #fff; position: relative; }
+  .media.is-ph { background: #0a0e13; }
+  .media-btn { all: unset; display: block; width: 100%; height: 100%; cursor: pointer; }
+  .media-btn:focus-visible { outline: 3px solid var(--accent2); }
+  .media .zoom { position: absolute; right: 4px; bottom: 4px; width: 24px; height: 24px; border-radius: 8px; background: rgba(11,15,20,0.75); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; pointer-events: none; }
+  .ex-meta h2 { font-size: 1.05rem; }
+  .ex-index { color: var(--muted); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 2px; }
+  .set-dots { display: inline-flex; gap: 4px; align-items: center; margin-right: 2px; }
+  .set-dots i { width: 8px; height: 8px; border-radius: 50%; background: #2a3544; display: block; }
+  .set-dots i.on { background: var(--ok); }
+  .set-dots i.next { background: var(--accent2); }
+  .badge { font-size: 0.72rem; padding: 4px 9px; }
+  .field label { font-size: 0.72rem; }
+  .field input { min-height: 52px; font-size: 18px; text-align: center; padding: 0 4px; }
+  .inputs { gap: 10px; }
+  .stepper { display: grid; grid-template-columns: 44px 1fr 44px; gap: 6px; align-items: center; }
+  .step { min-height: 52px; }
+  .set-actions .btn.edit-btn { flex: 0 0 auto; min-width: 88px; }
+  .done-summary { display: none; font-weight: 800; font-size: 1rem; font-variant-numeric: tabular-nums; color: var(--text); padding: 2px 0 0; }
+  .done-summary span { color: var(--muted); font-weight: 650; font-size: 0.82rem; }
+  .set.done:not(.open) .inputs, .set.done:not(.open) .wu-suggest, .set.done:not(.open) .last-hint,
+  .set.done:not(.open) .plate-hint, .set.done:not(.open) .timed-note { display: none; }
+  .set.done:not(.open) .done-summary { display: block; }
+  .set.done:not(.open) { padding: 10px 12px; }
+  .set.done:not(.open) .set-head { margin-bottom: 4px; }
+  .set.done:not(.open) .set-actions { margin-top: 6px; }
+  .set.done:not(.open) .btn.done-btn { min-height: 44px; font-size: 0.9rem; }
+
+  /* Sticky primary action in the thumb zone */
+  .next-fab {
+    position: fixed; z-index: 44; left: 50%; transform: translateX(-50%);
+    bottom: calc(var(--nav-h) + 14px + var(--safe-b));
+    min-height: 48px; max-width: calc(100vw - 32px); padding: 0 18px; border-radius: 999px; border: 0;
+    background: linear-gradient(135deg, #ff4d4d, #ff8a3d); color: #111; font-weight: 850; font-size: 0.92rem;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.5); display: none; align-items: center; gap: 8px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .next-fab.show { display: inline-flex; }
+  .next-fab:active { transform: translateX(-50%) scale(0.96); }
+  body.resting .next-fab { display: none; }
+
+  /* Rest timer as a bottom sheet above the nav bar */
+  .timer-bar { bottom: calc(var(--nav-h) + var(--safe-b)); padding: 0 10px 8px; background: none; }
+  .timer-inner { border-radius: 20px; padding: 12px 14px; background: #1b1213; border-color: #5a2a2a; gap: 12px; flex-wrap: nowrap; }
+  .timer-ring { position: relative; width: 64px; height: 64px; flex: 0 0 64px; border: 0; background: transparent; font-size: 1.25rem; }
+  .timer-ring svg { position: absolute; inset: 0; width: 64px; height: 64px; transform: rotate(-90deg); }
+  .timer-ring svg circle { fill: none; stroke-width: 5; }
+  .timer-ring svg .trk { stroke: #3a1f1f; }
+  .timer-ring svg .val { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke .2s; }
+  .timer-ring.warn svg .val { stroke: var(--accent2); }
+  .timer-ring.done svg .val { stroke: var(--ok); }
+  .timer-ring .num { position: relative; }
+  .timer-actions .btn { min-height: 48px; min-width: 56px; }
+
+  /* Exercise detail bottom sheet */
+  .sheet-backdrop { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,0.55); display: none; align-items: flex-end; justify-content: center; }
+  .sheet-backdrop.show { display: flex; animation: bdIn .18s ease; }
+  @keyframes bdIn { from { opacity: 0; } to { opacity: 1; } }
+  .sheet {
+    width: 100%; max-width: 560px; max-height: 88dvh; overflow: auto; background: var(--surface);
+    border-radius: 24px 24px 0 0; border: 1px solid var(--border); border-bottom: 0;
+    padding: 8px 16px calc(18px + var(--safe-b)); animation: sheetUp .22s cubic-bezier(.2,.8,.2,1);
+  }
+  @keyframes sheetUp { from { transform: translateY(40px); opacity: .6; } to { transform: none; opacity: 1; } }
+  .sheet .grabber { width: 36px; height: 5px; border-radius: 999px; background: #3a4656; margin: 4px auto 10px; }
+  .sheet .sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .sheet h3 { margin: 0; font-size: 1.2rem; line-height: 1.25; }
+  .sheet-close { min-width: 44px; min-height: 44px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 1.1rem; font-weight: 800; }
+  .sheet .big-media { margin: 12px 0; border-radius: 16px; overflow: hidden; background: #fff; aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; }
+  .sheet .big-media img { width: 100%; height: 100%; object-fit: contain; }
+  .sheet .big-media.is-ph { background: #0a0e13; color: var(--muted); }
+  .sheet .big-media.is-ph .ph svg { width: 64px; height: 64px; }
+  .sheet .sheet-sub { color: var(--muted); font-size: 0.85rem; line-height: 1.4; }
+  .sheet .sheet-sub strong { color: var(--text); }
+  .sheet ol { margin: 10px 0 0; padding-left: 20px; color: var(--text); font-size: 0.92rem; line-height: 1.6; }
+  .sheet ol .k-wu { color: var(--wu); font-weight: 800; }
+  .sheet ol .k-work { color: var(--work); font-weight: 800; }
+  .toast { top: calc(12px + var(--safe-t)); }
+
+  .btn.done-btn.outline { background: transparent; border: 1.5px solid rgba(255,138,61,0.6); color: var(--accent2); }
+  .header-body .progress-row { display: none; } /* progress lives in the always-visible top bar + bottom nav rings */
+  .set.done:not(.open) { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; }
+  .set.done:not(.open) .set-head { grid-column: 1 / -1; }
+  .set.done:not(.open) .set-actions { margin-top: 0; }
+  .set.done:not(.open) .set-actions .btn { flex: 0 0 auto; min-width: 72px; padding: 0 14px; }
+  .set.done:not(.open) .done-summary { padding: 0; }
 </style>
 </head>
 <body>
@@ -283,6 +420,7 @@
         <span class="slim-title" id="slimTitle">Day 1 · Chest</span>
         <div class="slim-bar"><i id="slimBar"></i></div>
         <span class="slim-pct" id="slimPct">0%</span>
+        <span class="slim-count" id="slimCount"></span>
       </div>
       <span class="chevron" aria-hidden="true">▾</span>
     </div>
@@ -297,7 +435,6 @@
     <div class="notes">
       <strong>Program rules:</strong> max <strong>1 min</strong> rest between sets (incl. between exercises). Warm-ups as listed; working sets heavy (6–8 or 8–10), push near failure (forced reps with partner optional).
     </div>
-    <div class="day-picker" id="dayPicker"></div>
     <div class="progress-row">
       <div class="bar"><i id="progBar"></i></div>
       <div class="pct" id="progPct">0%</div>
@@ -323,9 +460,17 @@
   Exercise GIFs via <a href="https://oss.exercisedb.dev/docs" target="_blank" rel="noopener">ExerciseDB / AscendAPI</a> (attribution required · non-commercial).
 </footer>
 
-<div class="timer-bar" id="timerBar">
+<button type="button" class="next-fab" id="nextFab" aria-label="Jump to next set"></button>
+
+<nav class="day-picker bottom-nav" id="dayPicker" aria-label="Workout days"></nav>
+
+<div class="sheet-backdrop" id="sheetBackdrop" aria-hidden="true">
+  <div class="sheet" id="exSheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"></div>
+</div>
+
+<div class="timer-bar" id="timerBar" role="status" aria-live="polite">
   <div class="timer-inner">
-    <div class="timer-ring" id="timerNum">60</div>
+    <div class="timer-ring" id="timerRing"><svg viewBox="0 0 64 64" aria-hidden="true"><circle class="trk" cx="32" cy="32" r="28"/><circle class="val" id="timerArc" cx="32" cy="32" r="28" stroke-dasharray="175.93" stroke-dashoffset="0"/></svg><span class="num" id="timerNum">60</span></div>
     <div class="timer-copy">
       <strong id="timerTitle">Rest timer</strong>
       <span id="timerSub">Program max: 60 seconds</span>
@@ -533,6 +678,7 @@ function updateSlimHeader() {
   $('slimTitle').textContent = `Day ${day.id} · ${day.short}`;
   $('slimPct').textContent = s.pct + '%';
   $('slimBar').style.width = s.pct + '%';
+  const c = $('slimCount'); if (c) c.textContent = `${s.done}/${s.total}`;
 }
 
 function toast(msg) {
@@ -879,12 +1025,16 @@ function scheduleScrollSave() {
 function renderDayPicker() {
   dayPicker.innerHTML = DAYS.map(d => {
     const s = dayStats(d);
-    return `<button type="button" class="day-btn ${d.id === state.day ? 'active' : ''}" data-day="${d.id}">
-      Day ${d.id}<small>${d.short} · ${s.pct}%</small>
+    const C = 2 * Math.PI * 10;
+    const active = d.id === state.day;
+    return `<button type="button" class="day-btn ${active ? 'active' : ''}" data-day="${d.id}" aria-current="${active ? 'page' : 'false'}" aria-label="Day ${d.id}, ${d.title}, ${s.pct}% done">
+      <span class="nav-ind"><svg viewBox="0 0 26 26" aria-hidden="true"><circle class="trk" cx="13" cy="13" r="10"/><circle class="val" cx="13" cy="13" r="10" stroke-dasharray="${C.toFixed(2)}" stroke-dashoffset="${(C * (1 - s.pct / 100)).toFixed(2)}"/></svg><span class="nav-num">${d.id}</span></span>
+      <small>${d.short}</small>
     </button>`;
   }).join('');
   dayPicker.querySelectorAll('.day-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      haptic(10);
       persistScroll();
       state.day = Number(btn.dataset.day);
       state.scrollY = 0;
@@ -917,11 +1067,15 @@ function render(opts = {}) {
   renderDayPicker();
   renderProgress();
   app.innerHTML = `
-    <div style="font-size:0.85rem;color:var(--muted);margin-bottom:2px;">Day ${day.id} — <strong style="color:var(--text)">${day.title}</strong></div>
-    ${day.exercises.map(ex => renderExercise(ex, focus)).join('')}
+    <div class="day-hero">
+      <div><div class="eyebrow">Day ${day.id} of ${DAYS.length}</div><h2>${day.title}</h2></div>
+      <div class="meta">${day.exercises.length} exercises<br><strong>${dayStats(day).done}/${dayStats(day).total}</strong> sets done</div>
+    </div>
+    ${day.exercises.map((ex, n) => renderExercise(ex, focus, n)).join('')}
   `;
   bindCards();
   save();
+  updateNextFab(focus);
 
   if (opts.resume || !didInitialResume) {
     didInitialResume = true;
@@ -943,19 +1097,24 @@ function render(opts = {}) {
   }
 }
 
-function renderExercise(ex, focus) {
+function renderExercise(ex, focus, n = 0) {
   const done = exerciseDone(ex);
-  const media = ex.exerciseId
-    ? `<img loading="lazy" decoding="async" alt="${ex.name}" src="${GIF(ex.exerciseId)}" onerror="this.style.display='none';this.parentNode.insertAdjacentHTML('beforeend','<div class=ph>GIF n/a</div>')" />`
+  const inner = ex.exerciseId
+    ? `<img loading="lazy" decoding="async" alt="${ex.name} demo" src="${GIF(ex.exerciseId)}" onerror="this.style.display='none';this.parentNode.insertAdjacentHTML('beforeend','<div class=ph>GIF n/a</div>')" />`
     : placeholderSVG(ex.placeholder || 'stretch');
+  const media = `<button type="button" class="media-btn" data-sheet="${ex.id}" aria-label="Show ${ex.name} details">${inner}</button>${ex.exerciseId ? '<span class="zoom" aria-hidden="true">⤢</span>' : ''}`;
+  const doneCount = ex.sets.filter((_, i) => getLog(ex.id, i).done).length;
+  const dots = `<span class="set-dots" aria-hidden="true">${ex.sets.map((_, i) => `<i class="${getLog(ex.id, i).done ? 'on' : (focus && focus.exId === ex.id && focus.setIdx === i ? 'next' : '')}"></i>`).join('')}</span>`;
+  const setWord = ex.sets.length === 1 ? 'set' : 'sets';
   return `<article class="card ${done ? 'done' : ''}" data-ex="${ex.id}">
     <div class="card-top">
-      <div class="media">${media}</div>
+      <div class="media ${ex.exerciseId ? '' : 'is-ph'}">${media}</div>
       <div class="ex-meta">
+        <div class="ex-index">Exercise ${n + 1}</div>
         <h2>${ex.name}</h2>
         ${ex.startHint ? `<div class="start-hint"><strong>${ex.startHint}</strong><span class="hint-sub">· adjust anytime</span></div>` : ''}
         <div class="badge-row">
-          ${done ? '<span class="badge ok">✓ Complete</span>' : `<span class="badge">${ex.sets.length} sets</span>`}
+          ${done ? '<span class="badge ok">✓ Complete</span>' : `<span class="badge">${dots} ${doneCount}/${ex.sets.length} ${setWord}</span>`}
           ${ex.weak ? '<span class="badge">closest GIF</span>' : ''}
         </div>
       </div>
@@ -1016,13 +1175,17 @@ function renderSet(ex, s, i, focus) {
     : `${wuBanner}<div class="inputs">
       <div class="field">
         <label>${weightLabel}</label>
-        <input type="number" inputmode="decimal" step="any" placeholder="${phNum ? '~' + phNum + ' lb' : 'lb/kg'}" data-field="weight" value="${vals.weight ?? ''}" autocomplete="off" />
+        <div class="stepper">
+          <button type="button" class="step" data-wstep="-1" aria-label="Decrease weight">−</button>
+          <input type="number" inputmode="decimal" step="any" placeholder="${phNum ? '~' + phNum : 'lb'}" data-field="weight" value="${vals.weight ?? ''}" autocomplete="off" aria-label="Weight in pounds" />
+          <button type="button" class="step" data-wstep="1" aria-label="Increase weight">+</button>
+        </div>
       </div>
       <div class="field">
         <label>Reps done</label>
-        <div class="reps-row">
+        <div class="reps-row stepper">
           <button type="button" class="step" data-step="-1" aria-label="Decrease reps">−</button>
-          <input type="number" inputmode="numeric" placeholder="${s.reps}" data-field="reps" value="${vals.reps ?? ''}" autocomplete="off" />
+          <input type="number" inputmode="numeric" placeholder="${s.reps}" data-field="reps" value="${vals.reps ?? ''}" autocomplete="off" aria-label="Reps done" />
           <button type="button" class="step" data-step="1" aria-label="Increase reps">+</button>
         </div>
       </div>
@@ -1032,19 +1195,23 @@ function renderSet(ex, s, i, focus) {
   const doneLabel = timed
     ? (log.done ? 'Undo' : 'Mark done')
     : (log.done ? 'Undo' : (hasNextAfter || isFocus ? 'Done → next + Rest' : 'Done + Rest'));
-  return `<div class="set ${log.done ? 'done' : ''} ${isFocus ? 'focus' : ''} ${timed ? 'timed-set' : ''}" data-set="${i}" data-focus-key="${setKey(ex.id, i)}" data-mode="${timed ? 'timed' : 'lift'}" data-kind="${s.kind || 'work'}" data-barbell="${showPlates ? '1' : '0'}">
+  const isOpen = log.done && openDoneSets.has(setKey(ex.id, i));
+  return `<div class="set ${log.done ? 'done' : ''} ${isOpen ? 'open' : ''} ${isFocus ? 'focus' : ''} ${timed ? 'timed-set' : ''}" data-set="${i}" data-focus-key="${setKey(ex.id, i)}" data-mode="${timed ? 'timed' : 'lift'}" data-kind="${s.kind || 'work'}" data-barbell="${showPlates ? '1' : '0'}">
     <div class="set-head">
       <div class="set-label"><span class="${kindClass}">${kindLabel}</span>${timed ? '' : ` · Set ${i + 1}`}</div>
       <div class="target">${timed ? `Duration: ${s.reps}` : `Target: ${s.reps}`}${note}${log.done ? ' <span class="check">✓</span>' : ''}</div>
     </div>
+    ${log.done ? `<div class="done-summary">${timed ? (log.reps || s.reps) : `${log.weight !== '' && log.weight != null ? log.weight + ' lb' : '—'} × ${log.reps !== '' && log.reps != null ? log.reps : '—'} <span>reps</span>`}</div>` : ''}
     ${body}
     ${hint}
     <div class="set-actions">
-      <button type="button" class="btn done-btn ${log.done ? '' : 'primary'} mark-done">${doneLabel}</button>
+      ${log.done && !timed ? `<button type="button" class="btn edit-btn" aria-expanded="${isOpen}">${isOpen ? 'Close' : 'Edit'}</button>` : ''}
+      <button type="button" class="btn done-btn ${log.done ? '' : (isFocus ? 'primary' : 'outline')} mark-done">${doneLabel}</button>
     </div>
   </div>`;
 }
 
+const openDoneSets = new Set(); // UI-only: done sets expanded for editing (not persisted)
 let wuRefreshTimer = null;
 function scheduleWarmupRefresh() {
   clearTimeout(wuRefreshTimer);
@@ -1069,6 +1236,9 @@ function scheduleWarmupRefresh() {
 }
 
 function bindCards() {
+  app.querySelectorAll('[data-sheet]').forEach(btn => {
+    btn.addEventListener('click', () => openExerciseSheet(btn.dataset.sheet));
+  });
   app.querySelectorAll('.card').forEach(card => {
     const exId = card.dataset.ex;
     card.querySelectorAll('.set').forEach(setEl => {
@@ -1105,6 +1275,36 @@ function bindCards() {
           if (setEl.dataset.kind === 'wu') scheduleWarmupRefresh();
         });
       });
+      setEl.querySelectorAll('[data-wstep]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const input = setEl.querySelector('input[data-field="weight"]');
+          if (!input) return;
+          const ex = currentDay().exercises.find(e => e.id === exId);
+          const cur = parseFloat(input.value || input.placeholder.replace(/[^\d.]/g, '') || '0') || 0;
+          const inc = (ex && equipmentKind(ex) === 'db' && cur < 25) ? 2.5 : 5;
+          const next = Math.max(0, Math.round((cur + Number(btn.dataset.wstep) * inc) * 10) / 10);
+          input.value = String(next);
+          setLog(exId, idx, { weight: String(next) });
+          haptic(12);
+          if (setEl.dataset.barbell === '1') {
+            const el = setEl.querySelector('[data-plate-hint]');
+            if (el) {
+              const t = formatPlates(platesPerSide(input.value));
+              el.innerHTML = t ? `<strong>${t}</strong>` : 'Enter bar weight for plates/side';
+            }
+          }
+          if (setEl.dataset.kind === 'wu') scheduleWarmupRefresh();
+        });
+      });
+      const editBtn = setEl.querySelector('.edit-btn');
+      if (editBtn) editBtn.addEventListener('click', () => {
+        const open = setEl.classList.toggle('open');
+        const k = setEl.dataset.focusKey;
+        if (open) openDoneSets.add(k); else openDoneSets.delete(k);
+        editBtn.textContent = open ? 'Close' : 'Edit';
+        editBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        haptic(8);
+      });
       setEl.querySelector('.mark-done').addEventListener('click', () => {
         const log = getLog(exId, idx);
         const nextDone = !log.done;
@@ -1130,11 +1330,78 @@ function bindCards() {
   });
 }
 
+let nextFabObserver = null;
+function updateNextFab(focus) {
+  const fab = $('nextFab');
+  if (nextFabObserver) { nextFabObserver.disconnect(); nextFabObserver = null; }
+  if (!focus) { fab.classList.remove('show'); return; }
+  const ex = currentDay().exercises.find(e => e.id === focus.exId);
+  const s = ex.sets[focus.setIdx];
+  fab.innerHTML = `<span class="fab-arrow" aria-hidden="true">↓</span> Next: ${ex.name}${ex.sets.length > 1 ? ` · Set ${focus.setIdx + 1}` : ''}${s && s.kind === 'work' && !isTimedSet(s) ? ' (working)' : ''}`;
+  const el = document.querySelector(`.set[data-focus-key="${focus.key}"]`);
+  if (!el || !('IntersectionObserver' in window)) { fab.classList.remove('show'); return; }
+  nextFabObserver = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      fab.classList.toggle('show', !en.isIntersecting);
+      const a = fab.querySelector('.fab-arrow');
+      if (a) a.textContent = en.boundingClientRect.top < 0 ? '↑' : '↓';
+    });
+  }, { rootMargin: '-60px 0px -140px 0px', threshold: 0.25 });
+  nextFabObserver.observe(el);
+}
+$('nextFab').addEventListener('click', () => {
+  const focus = findNextIncomplete(currentDay());
+  if (!focus) return;
+  const el = document.querySelector(`.set[data-focus-key="${focus.key}"]`);
+  if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  haptic(10);
+});
+
+let sheetReturnFocus = null;
+function openExerciseSheet(exId) {
+  const ex = currentDay().exercises.find(e => e.id === exId);
+  if (!ex) return;
+  sheetReturnFocus = document.activeElement;
+  const media = ex.exerciseId
+    ? `<div class="big-media"><img alt="${ex.name} demo" src="${GIF(ex.exerciseId)}" /></div>`
+    : `<div class="big-media is-ph">${placeholderSVG(ex.placeholder || 'stretch')}</div>`;
+  const sets = ex.sets.map((s, i) => {
+    const log = getLog(ex.id, i);
+    const kind = isTimedSet(s) ? '<span class="k-wu">Cardio</span>' : (s.kind === 'wu' ? '<span class="k-wu">Warm-up</span>' : '<span class="k-work">Working</span>');
+    return `<li>${kind} · ${s.reps}${s.note && !isTimedSet(s) ? ` · ${s.note}` : ''}${log.done ? ' ✓' : ''}</li>`;
+  }).join('');
+  $('exSheet').innerHTML = `
+    <div class="grabber" aria-hidden="true"></div>
+    <div class="sheet-head"><h3 id="sheetTitle">${ex.name}</h3><button type="button" class="sheet-close" id="sheetClose" aria-label="Close">✕</button></div>
+    ${media}
+    <div class="sheet-sub">${ex.startHint ? `<strong>${ex.startHint}</strong><br>` : ''}${ex.matchName ? `Demo: ExerciseDB “${ex.matchName}”${ex.weak ? ' (closest available GIF)' : ''}` : ''}</div>
+    <ol>${sets}</ol>`;
+  const bd = $('sheetBackdrop');
+  bd.classList.add('show');
+  bd.setAttribute('aria-hidden', 'false');
+  $('sheetClose').addEventListener('click', closeExerciseSheet);
+  $('sheetClose').focus();
+  haptic(8);
+}
+function closeExerciseSheet() {
+  const bd = $('sheetBackdrop');
+  if (!bd.classList.contains('show')) return;
+  bd.classList.remove('show');
+  bd.setAttribute('aria-hidden', 'true');
+  if (sheetReturnFocus && sheetReturnFocus.focus) sheetReturnFocus.focus();
+}
+$('sheetBackdrop').addEventListener('click', e => { if (e.target.id === 'sheetBackdrop') closeExerciseSheet(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeExerciseSheet(); });
+
 function paintTimer() {
   const ring = $('timerNum');
   ring.textContent = String(Math.max(0, restLeft));
-  ring.classList.toggle('warn', restLeft > 0 && restLeft <= 10);
-  ring.classList.toggle('done', restLeft <= 0);
+  const wrap = $('timerRing');
+  wrap.classList.toggle('warn', restLeft > 0 && restLeft <= 10);
+  wrap.classList.toggle('done', restLeft <= 0);
+  const C = 2 * Math.PI * 28;
+  const frac = restTotal > 0 ? Math.max(0, Math.min(1, restLeft / restTotal)) : 0;
+  $('timerArc').style.strokeDashoffset = String((C * (1 - frac)).toFixed(2));
   $('timerSub').textContent = restLeft > 0
     ? `${restLeft}s left · program max 60s (+15 ok)`
     : 'Rest over — go!';
@@ -1190,7 +1457,7 @@ function stopRest(announce = true) {
   restLeft = 0;
   $('timerBar').classList.remove('show');
   document.body.classList.remove('resting');
-  $('timerNum').classList.remove('warn', 'done');
+  $('timerRing').classList.remove('warn', 'done');
   if (announce) haptic(10);
 }
 
