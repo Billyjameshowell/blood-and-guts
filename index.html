@@ -422,12 +422,20 @@ const DAYS = [
     title: 'Legs',
     short: 'Legs',
     exercises: [
-      { id: 'd4-cardio', name: '10 min cardio + stretches', placeholder: 'stretch', sets: [
+      { id: 'd4-cardio', name: '10 min cardio', placeholder: 'cardio', sets: [
         { kind: 'wu', reps: '10 min', note: 'Cardio', mode: 'timed' },
-        { kind: 'wu', reps: '1×6', note: 'Low back bent' },
-        { kind: 'wu', reps: '1×6', note: 'Low back straight' },
-        { kind: 'wu', reps: '1×6', note: 'Hamstring' },
-        { kind: 'wu', reps: '1×6', note: 'Glute' },
+      ]},
+      { id: 'd4-lowback-bent', name: 'Low Back Stretch (bent knees)', exerciseId: 'znP9SIh', matchName: 'hug knees to chest', sets: [
+        { kind: 'wu', reps: '1×6' }
+      ]},
+      { id: 'd4-lowback-straight', name: 'Low Back Stretch (straight legs)', exerciseId: 'JbC2iaV', matchName: 'spine stretch', weak: true, sets: [
+        { kind: 'wu', reps: '1×6' }
+      ]},
+      { id: 'd4-hamstring', name: 'Hamstring Stretch', exerciseId: '99rWm7w', matchName: 'hamstring stretch', sets: [
+        { kind: 'wu', reps: '1×6' }
+      ]},
+      { id: 'd4-glute', name: 'Glute Stretch', exerciseId: 'DeDThfG', matchName: 'seated glute stretch', sets: [
+        { kind: 'wu', reps: '1×6' }
       ]},
       { id: 'd4-lext', name: 'Leg Extension', exerciseId: 'my33uHU', matchName: 'lever leg extension', startHint: 'Start ~110 lb stack', sets: [
         { kind: 'wu', reps: '15' }, { kind: 'wu', reps: '10-12' }, { kind: 'work', reps: '10-12' }
@@ -461,6 +469,21 @@ function defaultState() {
   return { day: 1, logs: {}, scrollY: 0, resumeKey: null, headerCollapsed: false };
 }
 
+/** Day 4 stretches used to be sets 1-4 of 'd4-cardio'; they are now their own exercises. Move any old logs (same {weight,reps,done} shape). */
+const LOG_KEY_MIGRATIONS = {
+  'd4-cardio__1': 'd4-lowback-bent__0',
+  'd4-cardio__2': 'd4-lowback-straight__0',
+  'd4-cardio__3': 'd4-hamstring__0',
+  'd4-cardio__4': 'd4-glute__0',
+};
+function migrateLogs(logs) {
+  Object.entries(LOG_KEY_MIGRATIONS).forEach(([from, to]) => {
+    if (logs[from] && !logs[to]) logs[to] = logs[from];
+    delete logs[from];
+  });
+  return logs;
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -468,7 +491,7 @@ function load() {
     const parsed = JSON.parse(raw);
     return {
       day: parsed.day || 1,
-      logs: parsed.logs || {},
+      logs: migrateLogs(parsed.logs || {}),
       scrollY: typeof parsed.scrollY === 'number' ? parsed.scrollY : 0,
       resumeKey: parsed.resumeKey || null,
       headerCollapsed: !!parsed.headerCollapsed
