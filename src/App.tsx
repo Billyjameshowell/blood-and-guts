@@ -2,8 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { DAYS, type Exercise } from './program';
-import { load, save, setKey, type AppState, type SetLog } from './store';
-import { findFocus, getLog, isDone, isTimed, suggestions } from './training';
+import { load, logKey, save, setKey, todayISO, type AppState, type SetLog } from './store';
+import { archiveAndClearDay, chosenVariant, findFocus, getLog, isDone, isTimed, presentExercise, suggestions } from './training';
 import { useReloadOnNewBuild, useRestTimer, useWakeLock, vibrate } from './device';
 import { ExerciseCard, type Edit } from './components/ExerciseCard';
 import type { Field } from './components/SetRow';
@@ -11,19 +11,24 @@ import { DayNav, ExerciseDetails, NextButton, RestTimer } from './components/Chr
 
 const dayById = (id: number) => DAYS.find(d => d.id === id) ?? DAYS[0];
 
-/** Skipped exercises count as completed. */
-function dayProgress(logs: Record<string, SetLog>, skipped: Record<string, boolean>, id: number) {
-  const sets = dayById(id).exercises.flatMap(ex => ex.sets.map((_, i) => skipped[ex.id] || !!getLog(logs, ex.id, i).done));
+/** Skipped exercises count as completed. Progress follows whichever variant is selected for the slot. */
+function dayProgress(logs: Record<string, SetLog>, skipped: Record<string, boolean>, picked: Record<string, string>, id: number) {
+  const sets = dayById(id).exercises.flatMap(ex => {
+    const variantId = chosenVariant(ex, picked).id;
+    return ex.sets.map((_, i) => skipped[ex.id] || !!getLog(logs, ex.id, i, variantId).done);
+  });
   const done = sets.filter(Boolean).length;
   return { done, total: sets.length, pct: sets.length ? done / sets.length : 0 };
 }
 
 /**
  * State ownership:
- * - `state.logs[set]` holds each set's values. For an unlogged set that is the draft being typed (saved as typed,
- *   so it survives reloads); Done marks it logged. Each field change patches only that field.
+ * - `state.logs[set]` holds each set's values for the variant being logged. For an unlogged set that is the
+ *   draft being typed (saved as typed, so it survives reloads); Done marks it logged. Each field change patches only that field.
+ * - `state.history[variant]` is the previous session for that movement. Reset day files the current logs there and clears them.
+ * - `state.variant[slot]` is the swap he picked for that slot, so the next session opens on it.
  * - `edit` is the draft for a done set being edited; the logged values are untouched until Save.
- * - Suggestions are derived from logs on render and only ever used as placeholders / stepper start values.
+ * - Suggestions prefer last-time numbers for the selected variant, and are only ever placeholders / stepper start values.
  */
 export default function App() {
   const [state, setState] = useState<AppState>(load);
@@ -31,16 +36,23 @@ export default function App() {
   const day = dayById(state.day);
   // The exercise Billy is actually working on (last one he touched), so "next" follows him, not program order.
   const [activeExId, setActiveExId] = useState(() => state.resumeKey?.split('__')[0] ?? null);
-  const [details, setDetails] = useState<Exercise | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const timer = useRestTimer();
   const wake = useWakeLock();
   useReloadOnNewBuild();
 
-  const focus = useMemo(() => findFocus(state.logs, day.exercises, activeExId, state.skipped), [state.logs, day, activeExId, state.skipped]);
+  const variantOf = (ex: Exercise) => chosenVariant(ex, state.variant);
+  const focus = useMemo(
+    () => findFocus(state.logs, day.exercises, activeExId, state.skipped, ex => chosenVariant(ex, state.variant).id),
+    [state.logs, day, activeExId, state.skipped, state.variant],
+  );
   const focusKey = focus ? setKey(focus.exId, focus.idx) : null;
   const focusEx = focus && day.exercises.find(e => e.id === focus.exId);
-  const progress = dayProgress(state.logs, state.skipped, day.id);
-  const isCollapsed = (ex: Exercise) => state.collapsed[ex.id] ?? (isDone(state.logs, ex) || !!state.skipped[ex.id]);
+  const focusVariant = focusEx && variantOf(focusEx);
+  const progress = dayProgress(state.logs, state.skipped, state.variant, day.id);
+  const isCollapsed = (ex: Exercise) => state.collapsed[ex.id] ?? (isDone(state.logs, ex, variantOf(ex).id) || !!state.skipped[ex.id]);
+  const detailsEx = detailsId ? DAYS.flatMap(d => d.exercises).find(e => e.id === detailsId) ?? null : null;
+  const detailsVariant = detailsEx ? variantOf(detailsEx) : null;
 
   useEffect(() => save({ ...state, resumeKey: focusKey }), [state, focusKey]);
 
@@ -54,11 +66,12 @@ export default function App() {
     return () => { clearTimeout(t); removeEventListener('scroll', onScroll); };
   }, []);
 
-  const patchLog = (exId: string, idx: number, patch: SetLog, autoCollapse = false) =>
+  const patchLog = (ex: Exercise, idx: number, patch: SetLog, autoCollapse = false) =>
     setState(s => {
-      const key = setKey(exId, idx);
+      const variantId = chosenVariant(ex, s.variant).id;
+      const key = logKey(ex.id, idx, variantId);
       const collapsed = { ...s.collapsed };
-      if (autoCollapse) delete collapsed[exId];
+      if (autoCollapse) delete collapsed[ex.id];
       return { ...s, collapsed, logs: { ...s.logs, [key]: { ...s.logs[key], ...patch } } };
     });
 
@@ -67,36 +80,43 @@ export default function App() {
   const change = (ex: Exercise, idx: number, field: Field, v: string) => {
     if (isEditing(ex, idx)) return setEdit(e => e && { ...e, [field]: v });
     setActiveExId(ex.id);
-    patchLog(ex.id, idx, { [field]: v });
+    patchLog(ex, idx, { [field]: v });
   };
 
   // Done (or Save while editing): an empty field takes the suggestion shown as its placeholder.
   const done = (ex: Exercise, idx: number) => {
+    const variant = variantOf(ex);
     const set = ex.sets[idx];
-    const log = getLog(state.logs, ex.id, idx);
+    const log = getLog(state.logs, ex.id, idx, variant.id);
     const draft = isEditing(ex, idx) && edit ? edit : { weight: log.weight ?? '', reps: log.reps ?? '' };
-    const hint = suggestions(state.logs, ex, idx);
+    const hint = suggestions(state.logs, ex, idx, variant, state.history[variant.id]?.sets[idx]);
     const values = isTimed(set)
-      ? { weight: '', reps: draft.reps || set.reps }
+      ? { weight: '', reps: draft.reps || hint.reps || set.reps }
       : { weight: draft.weight || hint.weight, reps: draft.reps || hint.reps };
     (document.activeElement as HTMLElement | null)?.blur();
     setEdit(null);
-    if (log.done) return patchLog(ex.id, idx, values);
+    if (log.done) return patchLog(ex, idx, values);
     vibrate([40, 30, 40]);
     setActiveExId(ex.id);
-    patchLog(ex.id, idx, { ...values, done: true }, true);
+    patchLog(ex, idx, { ...values, done: true, at: todayISO() }, true);
     timer.start(60);
   };
 
   const startEdit = (ex: Exercise, idx: number) => {
-    const log = getLog(state.logs, ex.id, idx);
+    const log = getLog(state.logs, ex.id, idx, variantOf(ex).id);
     setEdit({ exId: ex.id, idx, weight: log.weight ?? '', reps: log.reps ?? '' });
   };
 
   const undo = (ex: Exercise, idx: number) => {
     vibrate(20);
     setActiveExId(ex.id);
-    patchLog(ex.id, idx, { done: false }, true);
+    patchLog(ex, idx, { done: false }, true);
+  };
+
+  const pickVariant = (ex: Exercise, id: string) => {
+    setActiveExId(ex.id);
+    setEdit(e => e?.exId === ex.id ? null : e);
+    setState(s => ({ ...s, variant: { ...s.variant, [ex.id]: id } }));
   };
 
   const toggle = (ex: Exercise) => {
@@ -130,19 +150,21 @@ export default function App() {
     vibrate(10);
     setEdit(null);
     setActiveExId(null);
+    setDetailsId(null);
     setState(s => ({ ...s, day: id, scrollY: 0 }));
     window.scrollTo(0, 0);
   };
 
   const resetDay = () => {
-    if (!confirm(`Reset all logged sets for Day ${day.id}?`)) return;
+    if (!confirm(`Reset Day ${day.id}? Sets are saved as last time.`)) return;
     setEdit(null);
     setActiveExId(null);
     timer.stop();
     setState(s => {
-      const logs = { ...s.logs }, collapsed = { ...s.collapsed }, skipped = { ...s.skipped };
-      day.exercises.forEach(ex => { delete collapsed[ex.id]; delete skipped[ex.id]; ex.sets.forEach((_, i) => delete logs[setKey(ex.id, i)]); });
-      return { ...s, logs, collapsed, skipped, scrollY: 0 };
+      const { logs, history } = archiveAndClearDay(s.logs, s.history, day.exercises, todayISO());
+      const collapsed = { ...s.collapsed }, skipped = { ...s.skipped };
+      day.exercises.forEach(ex => { delete collapsed[ex.id]; delete skipped[ex.id]; });
+      return { ...s, logs, history, collapsed, skipped, scrollY: 0 };
     });
     window.scrollTo(0, 0);
   };
@@ -182,18 +204,22 @@ export default function App() {
       </header>
 
       <main className="flex flex-col gap-3 p-3">
-        {day.exercises.map(ex => (
-          <ExerciseCard key={ex.id} ex={ex} logs={state.logs} edit={edit} focus={focus} collapsed={isCollapsed(ex)}
-            skipped={!!state.skipped[ex.id]}
-            onToggle={() => toggle(ex)}
-            onSkip={skip => setSkipped(ex, skip)}
-            onShowDetails={() => setDetails(ex)}
-            onChange={(i, f, v) => change(ex, i, f, v)}
-            onDone={i => done(ex, i)}
-            onEdit={i => startEdit(ex, i)}
-            onCancelEdit={() => setEdit(null)}
-            onUndo={i => undo(ex, i)} />
-        ))}
+        {day.exercises.map(ex => {
+          const variant = variantOf(ex);
+          return (
+            <ExerciseCard key={ex.id} ex={ex} variant={variant} logs={state.logs} last={state.history[variant.id]}
+              edit={edit} focus={focus} collapsed={isCollapsed(ex)} skipped={!!state.skipped[ex.id]}
+              onVariant={id => pickVariant(ex, id)}
+              onToggle={() => toggle(ex)}
+              onSkip={skip => setSkipped(ex, skip)}
+              onShowDetails={() => setDetailsId(ex.id)}
+              onChange={(i, f, v) => change(ex, i, f, v)}
+              onDone={i => done(ex, i)}
+              onEdit={i => startEdit(ex, i)}
+              onCancelEdit={() => setEdit(null)}
+              onUndo={i => undo(ex, i)} />
+          );
+        })}
         <footer className="mt-2 text-xs leading-relaxed text-muted">
           Program: <a className="text-accent-2" href="https://zajachealthandfitnessblog.wordpress.com/2013/04/14/7/" target="_blank" rel="noopener">Zajac Health &amp; Fitness</a>.
           Exercise GIFs: <a className="text-accent-2" href="https://oss.exercisedb.dev/docs" target="_blank" rel="noopener">ExerciseDB / AscendAPI</a> (non-commercial).
@@ -202,12 +228,13 @@ export default function App() {
 
       <NextButton
         targetId={focus && focusEx ? (isCollapsed(focusEx) ? `card-${focus.exId}` : `set-${focusKey}`) : null}
-        label={focus && focusEx ? `${focusEx.name}${focusEx.sets.length > 1 ? ` · ${focus.idx + 1}` : ''}` : ''}
+        label={focus && focusVariant ? `${focusVariant.name}${focusEx && focusEx.sets.length > 1 ? ` · ${focus.idx + 1}` : ''}` : ''}
         raised={timer.rest !== null}
         onGo={goNext} />
       <RestTimer rest={timer.rest} onAdd={() => timer.add(15)} onEnd={timer.stop} />
-      <DayNav day={day.id} pctFor={id => dayProgress(state.logs, state.skipped, id).pct} onSelect={selectDay} />
-      <ExerciseDetails ex={details} logs={state.logs} onClose={() => setDetails(null)} />
+      <DayNav day={day.id} pctFor={id => dayProgress(state.logs, state.skipped, state.variant, id).pct} onSelect={selectDay} />
+      <ExerciseDetails ex={detailsEx && detailsVariant ? presentExercise(detailsEx, detailsVariant) : null}
+        variantId={detailsVariant?.id ?? ''} logs={state.logs} onClose={() => setDetailsId(null)} />
     </div>
   );
 }

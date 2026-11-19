@@ -10,6 +10,8 @@ type Props = {
   label: string;
   value: Draft;
   hint: Suggestion;
+  /** Last time this set was done, already formatted. Empty when there is no history. */
+  prior: string;
   barbell: boolean;
   weightStep: (w: number) => number;
   done: boolean;
@@ -26,11 +28,12 @@ const field = 'h-12 w-full min-w-0 rounded-xl border border-line bg-bg text-cent
 const stepBtn = 'h-12 w-11 shrink-0 rounded-xl border border-line bg-bg text-xl font-bold active:scale-95 transition-transform';
 const smallBtn = 'h-11 rounded-xl border border-line px-4 font-semibold active:scale-95';
 
-/** Tapping a filled field selects its contents, so typing replaces the number instead of splicing into it. */
+/** Tapping a filled field selects its contents, so typing replaces the number instead of splicing into it.
+ *  The selection waits until after the tap places the caret, and it bails if a character already landed. */
 const selectAll = (e: FocusEvent<HTMLInputElement>) => {
   const el = e.currentTarget;
-  // After the tap places the caret (WebKit ignores a selection made synchronously in focus).
-  setTimeout(() => el.setSelectionRange(0, el.value.length));
+  const value = el.value;
+  setTimeout(() => { if (el.value === value) el.setSelectionRange(0, value.length); });
 };
 
 /**
@@ -56,7 +59,7 @@ function Stepper({ label, value, placeholder, start, step, decimal, onChange }: 
 }
 
 /** One set. Purely presentational: the values and the editing flag are owned by App. */
-export function SetRow({ set, label, value, hint, barbell, weightStep, done, editing, isNext, onChange, onDone, onEdit, onCancel, onUndo }: Props) {
+export function SetRow({ set, label, value, hint, prior, barbell, weightStep, done, editing, isNext, onChange, onDone, onEdit, onCancel, onUndo }: Props) {
   const timed = isTimed(set);
   const head = (
     <div className="flex items-baseline justify-between gap-2 text-sm">
@@ -87,10 +90,14 @@ export function SetRow({ set, label, value, hint, barbell, weightStep, done, edi
     <div className={`rounded-2xl border p-3 ${isNext ? 'border-accent-2 bg-accent-2/5 shadow-[0_0_0_1px_var(--color-accent-2)]' : 'border-line bg-surface-2'}`}>
       {head}
       {timed ? (
-        <input className={`${field} mt-2`} type="text" autoComplete="off" aria-label="Duration" value={value.reps} placeholder={set.reps}
-          onFocus={selectAll} onChange={e => onChange('reps', e.target.value)} />
+        <>
+          {prior && <p className="mt-1 text-xs font-semibold tabular-nums text-muted">{prior}</p>}
+          <input className={`${field} mt-2`} type="text" autoComplete="off" aria-label="Duration" value={value.reps} placeholder={hint.reps || set.reps}
+            onFocus={selectAll} onChange={e => onChange('reps', e.target.value)} />
+        </>
       ) : (
         <>
+          {prior && <p className="mt-1 text-xs font-semibold tabular-nums text-muted">{prior}</p>}
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Stepper label="weight" decimal value={value.weight} placeholder={hint.weight ? `${hint.weight} lb` : 'lb'}
               start={parseFloat(hint.weight) || null} step={weightStep(parseFloat(shownWeight) || 0)}
