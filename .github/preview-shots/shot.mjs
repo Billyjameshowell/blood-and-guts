@@ -176,13 +176,6 @@ async function vercelPreviewUrl(sha, config) {
   return ready.url.startsWith('http') ? ready.url : `https://${ready.url}`;
 }
 
-async function workflowOnDefaultBranch(repo) {
-  const info = await gh(`/repos/${repo}`);
-  if (!info?.default_branch) return false;
-  const file = await gh(`/repos/${repo}/contents/.github/workflows/preview-screenshots.yml?ref=${encodeURIComponent(info.default_branch)}`);
-  return Boolean(file?.content || file?.sha);
-}
-
 async function pullForSha(repo, sha) {
   const pulls = await gh(`/repos/${repo}/commits/${sha}/pulls`);
   const open = (pulls || []).find(pull => pull.state === 'open');
@@ -240,21 +233,16 @@ async function resolvePreview() {
 
   const waitMs = Number(process.env.PREVIEW_WAIT_SECONDS || 180) * 1000;
   const deadline = Date.now() + waitMs;
-  let onDefault = false;
-  try {
-    onDefault = await workflowOnDefaultBranch(repo);
-  } catch (error) {
-    console.warn(`Could not check the default branch workflow: ${error.message}`);
-  }
   console.log(`Waiting up to ${waitMs / 1000}s for a preview of ${headSha.slice(0, 7)}`);
 
   while (Date.now() < deadline) {
     try {
       const ghUrl = await githubPreviewUrl(repo, headSha, config.productionUrl);
-      if (ghUrl && onDefault) {
+      // deployment_status carries the URL and posts the comment. Capturing here too
+      // doubled the job, and the shared concurrency group cancelled the real run.
+      if (ghUrl) {
         return finish('', 'GitHub already has a successful preview deployment; the deployment_status run posts the screenshots', { prNumber, baseSha, headSha });
       }
-      if (ghUrl) return finish(ghUrl, '', { prNumber, baseSha, headSha });
     } catch (error) {
       console.warn(`GitHub deployment lookup failed: ${error.message}`);
     }

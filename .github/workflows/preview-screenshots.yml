@@ -2,9 +2,10 @@
 # Vercel + GitHub repo. Edit preview-shots.json (production URL, optional routes, Vercel ids).
 # Secrets are documented in the README. GITHUB_TOKEN is built in.
 #
-# deployment_status runs only from the default branch, and only after Vercel reports a
-# successful preview. pull_request is the fallback when that event never arrives: it polls
-# GitHub deployment statuses, then the Vercel API if VERCEL_TOKEN is set.
+# deployment_status runs when Vercel marks a preview successful and posts the screenshots.
+# pull_request is the fallback when that event never arrives: it polls GitHub deployment
+# statuses (and steps aside if one is already successful), then the Vercel API if
+# VERCEL_TOKEN is set.
 
 name: Preview screenshots
 
@@ -30,8 +31,10 @@ permissions:
   issues: write
   pull-requests: write
 
+# Separate groups so a pull_request run cannot cancel the deployment_status run
+# that actually has the preview URL. A newer push still cancels its own event.
 concurrency:
-  group: preview-shots-${{ github.event.deployment.sha || github.event.pull_request.head.sha || github.sha }}
+  group: preview-shots-${{ github.event_name }}-${{ github.event.deployment.sha || github.event.pull_request.head.sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
