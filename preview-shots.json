@@ -1,0 +1,10 @@
+{
+  "productionUrl": "https://blood-and-guts-five.vercel.app",
+  "fallbackRoutes": ["/"],
+  "maxRoutes": 3,
+  "waitFor": "header",
+  "vercel": {
+    "projectId": "prj_dIqB7JkXVp1VPG86wa50NCMacMwk",
+    "teamId": "team_LYdNxl2IUNXE28YXkVqMZg3Y"
+  }
+}

@@ -1,0 +1,126 @@
+# Drop-in: copy this file, .github/preview-shots/, and preview-shots.json into another
+# Vercel + GitHub repo. Edit preview-shots.json (production URL, optional routes, Vercel ids).
+# Secrets are documented in the README. GITHUB_TOKEN is built in.
+#
+# deployment_status runs only from the default branch, and only after Vercel reports a
+# successful preview. pull_request is the fallback when that event never arrives: it polls
+# GitHub deployment statuses, then the Vercel API if VERCEL_TOKEN is set.
+
+name: Preview screenshots
+
+on:
+  deployment_status:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: Preview deployment URL
+        required: true
+        type: string
+      pr_number:
+        description: Pull request number
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  deployments: read
+  statuses: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: preview-shots-${{ github.event.deployment.sha || github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  shoot:
+    name: Screenshot preview
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (
+        github.event.deployment_status.state == 'success' &&
+        !contains(github.event.deployment.environment, 'roduction')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.deployment.sha || github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Check route heuristic
+        working-directory: .github/preview-shots
+        run: node --test routes.test.mjs
+
+      - name: Resolve preview URL
+        id: preview
+        working-directory: .github/preview-shots
+        env:
+          PREVIEW_URL: ${{ github.event.inputs.preview_url || '' }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number || '' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.deployment.sha || github.event.pull_request.head.sha || github.sha }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node shot.mjs resolve
+
+      - name: Install browser and ffmpeg
+        if: steps.preview.outputs.preview_url != ''
+        working-directory: .github/preview-shots
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Capture screenshots and comment on Linear
+        id: capture
+        if: steps.preview.outputs.preview_url != ''
+        working-directory: .github/preview-shots
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
+          PR_NUMBER: ${{ steps.preview.outputs.pr_number }}
+          BASE_SHA: ${{ steps.preview.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.preview.outputs.head_sha }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node shot.mjs capture
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: preview-shots
+          path: .github/preview-shots/out/**
+          if-no-files-found: ignore
+
+      - name: Find existing preview comment
+        if: steps.preview.outputs.pr_number != '' && steps.capture.outcome == 'success'
+        uses: peter-evans/find-comment@v4
+        id: find
+        with:
+          issue-number: ${{ steps.preview.outputs.pr_number }}
+          comment-author: github-actions[bot]
+          body-includes: '<!-- preview-shots'
+
+      - name: Comment on the pull request
+        if: steps.preview.outputs.pr_number != '' && steps.capture.outcome == 'success' && steps.find.outputs.comment-id == ''
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          issue-number: ${{ steps.preview.outputs.pr_number }}
+          body-path: .github/preview-shots/out/comment.md
+
+      - name: Update preview comment
+        if: steps.preview.outputs.pr_number != '' && steps.capture.outcome == 'success' && steps.find.outputs.comment-id != ''
+        uses: peter-evans/create-or-update-comment@v5
+        with:
+          comment-id: ${{ steps.find.outputs.comment-id }}
+          body-path: .github/preview-shots/out/comment.md
+          edit-mode: replace

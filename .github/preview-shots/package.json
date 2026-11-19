@@ -1,0 +1,9 @@
+{
+  "name": "preview-shots",
+  "private": true,
+  "type": "module",
+  "description": "Screenshot a Vercel preview and post it to Linear. Copied with the preview-screenshots workflow.",
+  "dependencies": {
+    "playwright": "^1.64.1"
+  }
+}

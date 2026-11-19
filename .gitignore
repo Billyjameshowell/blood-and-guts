@@ -3,3 +3,5 @@ dist
 qa/*.png
 .vercel
 *.tsbuildinfo
+.github/preview-shots/node_modules
+.github/preview-shots/out
