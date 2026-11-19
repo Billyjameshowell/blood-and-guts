@@ -95,7 +95,7 @@ export function NextButton({ targetId, label, raised, onGo }: { targetId: string
   );
 }
 
-export function ExerciseDetails({ ex, logs, onClose }: { ex: Exercise | null; logs: Logs; onClose: () => void }) {
+export function ExerciseDetails({ ex, variantId, logs, onClose }: { ex: Exercise | null; variantId: string; logs: Logs; onClose: () => void }) {
   return (
     <Drawer.Root open={!!ex} onOpenChange={open => !open && onClose()}>
       <Drawer.Portal>
@@ -116,7 +116,7 @@ export function ExerciseDetails({ ex, logs, onClose }: { ex: Exercise | null; lo
                 {ex.sets.map((s, i) => (
                   <li key={i} className="flex justify-between border-b border-line/60 py-1.5">
                     <span className={s.kind === 'wu' ? 'text-wu' : 'text-accent'}>{isTimed(s) ? 'Cardio' : s.kind === 'wu' ? 'Warm-up' : 'Working'}</span>
-                    <span className="text-muted">{s.reps}{s.note && !isTimed(s) ? ` · ${s.note}` : ''}{getLog(logs, ex.id, i).done ? ' ✓' : ''}</span>
+                    <span className="text-muted">{s.reps}{s.note && !isTimed(s) ? ` · ${s.note}` : ''}{getLog(logs, ex.id, i, variantId).done ? ' ✓' : ''}</span>
                   </li>
                 ))}
               </ol>
